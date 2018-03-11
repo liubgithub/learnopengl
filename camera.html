@@ -206,29 +206,35 @@
             });
             return positions;
         }
+        var g_modelMatrix = new Matrix4();
+        var g_MvpMatrix = new Matrix4();
         //draw 10 cubes,we need define every cube's position
         function draw(gl, n, viewProjMatrix, u_MvpMatrix, currentAngle) {
-            var g_MvpMatrix = new Matrix4(); // Model view projection matrix
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);     // Clear buffers
+            //var g_MvpMatrix = new Matrix4(); // Model view projection matrix
             // Caliculate The model view projection matrix and pass it to u_MvpMatrix
             g_MvpMatrix.set(viewProjMatrix);
+            //g_MvpMatrix.rotate(currentAngle[0], 1.0, 0.0, 0.0); // Rotation around x-axis
+            //g_MvpMatrix.rotate(currentAngle[1], 0.0, 1.0, 0.0); // Rotation around y-axis
             g_MvpMatrix.rotate(currentAngle[0], 1.0, 0.0, 0.0); // Rotation around x-axis
             g_MvpMatrix.rotate(currentAngle[1], 0.0, 1.0, 0.0); // Rotation around y-axis
             var cubesPos = getCubesPosition();
             for(var i=0;i<cubesPos.length;i++){
                var rAngle = i * 20.0;
-               g_MvpMatrix.setTranslate(cubesPos[i][0],cubesPos[i][1],cubesPos[i][2]);
-               g_MvpMatrix.rotate(rAngle,1.0, 0.3, 0.5);
+               g_modelMatrix.setTranslate(cubesPos[i][0]+0.1,cubesPos[i][1],cubesPos[i][2]+0.2);
+               g_modelMatrix.rotate(rAngle,1.0, 0.3, 0.5);
+               g_MvpMatrix.multiply(g_modelMatrix);
                gl.uniformMatrix4fv(u_MvpMatrix, false, g_MvpMatrix.elements);
-               
-               gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);     // Clear buffers
                gl.drawElements(gl.TRIANGLES, n, gl.UNSIGNED_BYTE, 0); 
             }
-            
             /*// Draw the cube
             gl.uniformMatrix4fv(u_MvpMatrix, false, g_MvpMatrix.elements);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);     // Clear buffers
             gl.drawElements(gl.TRIANGLES, n, gl.UNSIGNED_BYTE, 0); 
             */
+        }
+        function drawCube(gl,viewProjMatrix,u_MvpMatrix, currentAngle) {
+            // body...
         }
 
         function initArrayBuffer(gl, data, num, type, attribute) {
