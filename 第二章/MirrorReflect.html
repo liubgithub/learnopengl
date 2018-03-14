@@ -63,8 +63,6 @@
           '#ifdef GL_ES\n' +
           'precision mediump float;\n' +
           '#endif\n' +
-          'varying vec4 v_FragColor;\n' +
-
           'varying vec4 v_Normal;\n' +
           'varying vec4 v_FragPos;\n' +
 
@@ -89,7 +87,7 @@
           '  vec3 specular = specularStrength * spec * u_lightColor;\n'+  
         
           '  vec3 result = (ambient + diffuse + specular) * u_objectColor;\n' +
-          '  FragColor = vec4(result, 1.0);\n' +
+          '  g_FragColor = vec4(result, 1.0);\n' +
           '}\n';
         var FSHADER_SOURCE =
           '#ifdef GL_ES\n' +
@@ -119,7 +117,7 @@
             }
 
             // Initialize shaders
-            if (!initShaders(gl, VSHADER_SOURCE, FSHADER_SOURCE)) {
+            if (!initShaders(gl, _VSHADER_SOURCE, _FSHADER_SOURCE)) {
                 console.log('Failed to intialize shaders.');
                 return;
             }
@@ -136,44 +134,53 @@
             gl.enable(gl.DEPTH_TEST);
 
             // Get the storage locations of uniform variables and so on
-            var u_MvpMatrix = gl.getUniformLocation(gl.program, 'u_MvpMatrix');
-            var u_LightColor = gl.getUniformLocation(gl.program, 'u_LightColor');
-            var u_AmbientLight = gl.getUniformLocation(gl.program, 'u_AmbientLight');
-            var u_LightDirection = gl.getUniformLocation(gl.program, 'u_LightDirection');
-            var u_specularStrength = gl.getUniformLocation(gl.program, 'u_specularStrength');
+            //var u_MvpMatrix = gl.getUniformLocation(gl.program, 'u_MvpMatrix');
+            //var u_LightColor = gl.getUniformLocation(gl.program, 'u_LightColor');
+            //var u_AmbientLight = gl.getUniformLocation(gl.program, 'u_AmbientLight');
+            //var u_LightDirection = gl.getUniformLocation(gl.program, 'u_LightDirection');
+            //var u_specularStrength = gl.getUniformLocation(gl.program, 'u_specularStrength');
 
-            if (!u_MvpMatrix || !u_LightColor || !u_LightDirection) {
+            var u_objectColor = gl.getUniformLocation(gl.program, 'u_objectColor');
+            var u_lightColor = gl.getUniformLocation(gl.program, 'u_lightColor');
+            var u_lightPos = gl.getUniformLocation(gl.program, 'u_lightPos');
+            var u_viewPos = gl.getUniformLocation(gl.program, 'u_viewPos');
+            var u_MvpMatrix = gl.getUniformLocation(gl.program, 'u_MvpMatrix');
+            var u_ModelMatrix = gl.getUniformLocation(gl.program, 'u_ModelMatrix');
+            if (!u_objectColor || !u_lightColor || !u_lightPos || !u_viewPos || !u_MvpMatrix || !u_ModelMatrix) {
                 console.log('Failed to get the storage location');
                 return;
             }
-            var specularStrength = 0.5;
-            gl.uniform1f(u_specularStrength, specularStrength);
             // Set the light color (white)
-            gl.uniform3f(u_LightColor, 1.0, 1.0, 1.0);
-            gl.uniform3f(u_AmbientLight, 0.2, 0.2, 0.2);
+            var cameraPos = [0.0, 0.0, 3.0];
+            var light_Pos = new Vector3([1.2, 1.0, 2.0]);
+            gl.uniform3f(u_objectColor, 1.0, 0.5, 0.31);
+            gl.uniform3f(u_lightColor, 1.0, 1.0, 1.0);
+            gl.uniform3f(u_lightPos, light_Pos.elements[0], light_Pos.elements[1], light_Pos.elements[2]);
+            gl.uniform3f(u_viewPos, viewPos[0], viewPos[1], viewPos[2]);
             // Set the light direction (in the world coordinate)
-            var light_Pos = new Vector3([0.0, 5.0, -12.0]);
+            
             //var lightDirection = new Vector3([16.0,14.0,20.0]);
-            var lightDirection = new Vector3([light_Pos.elements[0], light_Pos.elements[1], light_Pos.elements[2]]);
-            lightDirection.normalize();     // Normalize
-            gl.uniform3fv(u_LightDirection, lightDirection.elements);
+            //var lightDirection = new Vector3([light_Pos.elements[0], light_Pos.elements[1], light_Pos.elements[2]]);
+            //lightDirection.normalize();     // Normalize
+            //gl.uniform3fv(u_LightDirection, lightDirection.elements);
 
             // Calculate the view projection matrix
             var mvpMatrix = new Matrix4();    // Model view projection matrix
-            mvpMatrix.setPerspective(30, canvas.width / canvas.height, 1, 100);
-            mvpMatrix.lookAt(3, 3, 7, 0, 0, 0, 0, 1, 0);
-            var _mvpMatrix = new Matrix4();
-            _mvpMatrix.set(mvpMatrix);
+            mvpMatrix.setPerspective(45, canvas.width / canvas.height, 0.1, 100);
+            mvpMatrix.lookAt(cameraPos[0], cameraPos[1], cameraPos[2], 0, 0, 0, 0, 1, 0);
+            //var _mvpMatrix = new Matrix4();
+            //_mvpMatrix.set(mvpMatrix);
             //mvpMatrix.scale(0.5, 0.5, 0.5);//缩小一半
             var normalMatrix = new Matrix4(); // Transformation matrix for normals
             var modelMatrix = new Matrix4();  // Model matrix
-            modelMatrix.setScale(1.0, 0.5, 0.5);
-            _mvpMatrix.multiply(modelMatrix);
-            // Calculate the matrix to transform the normal based on the model matrix
-            normalMatrix.setInverseOf(modelMatrix);
-            normalMatrix.transpose();
+            mvpMatrix.multiply(modelMatrix);//
+            //modelMatrix.setScale(1.0, 0.5, 0.5);
+            //_mvpMatrix.multiply(modelMatrix);
+            //// Calculate the matrix to transform the normal based on the model matrix
+            //normalMatrix.setInverseOf(modelMatrix);
+            //normalMatrix.transpose();
             // Pass the model view projection matrix to the variable u_MvpMatrix
-            gl.uniformMatrix4fv(u_MvpMatrix, false, _mvpMatrix.elements);
+            gl.uniformMatrix4fv(u_MvpMatrix, false, mvpMatrix.elements);
 
             // Clear color and depth buffer
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -262,7 +269,7 @@
 
             // Write the vertex property to buffers (coordinates, colors and normals)
             if (!initArrayBuffer(gl, 'a_Position', vertices, 3, gl.FLOAT)) return -1;
-            if (!initArrayBuffer(gl, 'a_Color', colors, 3, gl.FLOAT)) return -1;
+            //if (!initArrayBuffer(gl, 'a_Color', colors, 3, gl.FLOAT)) return -1;//直接赋值
             if (!initArrayBuffer(gl, 'a_Normal', normals, 3, gl.FLOAT)) return -1;
 
             // Write the indices to the buffer object
