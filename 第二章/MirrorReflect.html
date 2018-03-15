@@ -10,112 +10,76 @@
     <script type="text/javascript">
         // LightedCube.js (c) 2012 matsuda
         // Vertex shader program
-        var VSHADER_SOURCE =
-          'attribute vec4 a_Position;\n' +
-          'attribute vec4 a_Color;\n' +
-          'attribute vec4 a_Normal;\n' +        // Normal
-          'uniform mat4 u_MvpMatrix;\n' +
-          'uniform mat4 u_ModelMatrix;\n' +    // Model matrix
-          'uniform mat4 u_NormalMatrix;\n' +   // Transformation matrix of the normal
-          'uniform float u_specularStrength;\n' +
-          'uniform vec3 u_LightColor;\n' +     // Light color
-          'uniform vec3 u_AmbientLight;\n' +//ambient light
-          'uniform vec3 u_LightDirection;\n' + // Light direction (in the world coordinate, normalized)
-          'varying vec4 v_Color;\n' +
-          'void main() {\n' +
-          '  gl_Position = u_MvpMatrix * a_Position ;\n' +
-               // Calculate the vertex position in the world coordinate
-          '  v_Position = vec3(u_ModelMatrix * a_Position);\n' +
-          '  v_Normal = normalize(vec3(u_NormalMatrix * a_Normal));\n' +
-          // Make the length of the normal 1.0
-          '  vec3 normal = normalize(a_Normal.xyz);\n' +
-          // Dot product of the light direction and the orientation of a surface (the normal)
-          '  float nDotL = max(dot(u_LightDirection, normal), 0.0);\n' +
-          // Calculate the color due to diffuse reflection
-          '  vec3 diffuse = u_LightColor * a_Color.rgb * nDotL;\n' +
-          '  vec3 ambient = u_AmbientLight * a_Color.rgb;\n' +
-          '  v_Color = vec4(diffuse + ambient, a_Color.a);\n' +
-          '}\n';
         var _VSHADER_SOURCE =
-       //'attribute vec4 a_Position;\n' +
-      // 'attribute vec4 a_Color;\n' +
-       //'attribute vec4 a_Normal;\n' +        // Normal
-       //'uniform mat4 u_MvpMatrix;\n' +
-       //'uniform mat4 u_ModelMatrix;\n' +    // Model matrix
-       //'uniform mat4 u_NormalMatrix;\n' +   // Transformation matrix of the normal
-       //'uniform float u_specularStrength;\n' +
-       //'uniform vec3 u_LightColor;\n' +     // Light color
-       //'uniform vec3 u_AmbientLight;\n' +//ambient light
-       //'uniform vec3 u_LightDirection;\n' + // Light direction (in the world coordinate, normalized)
-      'attribute vec4 a_Position;\n' +
-      'attribute vec4 a_Normal;\n' +        // Normal
-       'varying vec3 v_FragPos;\n' +
-       'varying vec4 v_Normal;\n' +
-       'uniform mat4 u_MvpMatrix;\n' +
-       'uniform mat4 u_ModelMatrix;\n' +    // Model matrix
-       'void main() {\n' +
-       ' v_FragPos = vec3(u_ModelMatrix * a_Position);\n' +
-       ' v_Normal = mat3(transpose(inverse(model))) * aNormal;\n'+
-       '  gl_Position = u_MvpMatrix * vec4(v_FragPos, 1.0);\n' +
-       '}\n';
+          `attribute vec4 a_Position;
+           attribute vec4 a_Normal;        // Normal
+           varying vec4 v_FragPos;
+           varying vec3 v_Normal;
+           uniform mat4 u_MvpMatrix;
+           uniform mat4 u_normalMatrix;   //transpose(inverse(u_ModelMatrix))这个过程在js里算的
+           uniform mat4 u_ModelMatrix;    // Model matrix
+           void main() {
+            v_FragPos = u_ModelMatrix * a_Position;
+            v_Normal = normalize(vec3(u_normalMatrix * a_Normal));
+             gl_Position = u_MvpMatrix * a_Position;
+         }`;
         // Fragment shader program
         var _FSHADER_SOURCE =
-          '#ifdef GL_ES\n' +
-          'precision mediump float;\n' +
-          '#endif\n' +
-          'varying vec4 v_Normal;\n' +
-          'varying vec4 v_FragPos;\n' +
+          `#ifdef GL_ES
+          precision mediump float;
+          #endif
+          varying vec3 v_Normal;
+          varying vec4 v_FragPos;
 
-          'uniform vec3 u_lightPos;\n' +
-          'uniform vec3 u_viewPos;\n' +
-          'uniform vec3 u_lightColor;\n'+
-          'uniform vec3 u_objectColor;\n'+
-          'void main() {\n' +
-          '  float ambientStrength = 0.1;\n' +
-          '  vec3 ambient = ambientStrength * u_lightColor;' +
-          // diffuse 
-          '  vec3 norm = normalize(Normal);\n'+
-          '  vec3 lightDir = normalize(lightPos - FragPos);\n' +
-          '  float diff = max(dot(norm, lightDir), 0.0);\n' +
-          '  vec3 diffuse = diff * lightColor;\n' +
-    
+          uniform vec3 u_lightPos;
+          uniform vec3 u_viewPos;
+          uniform vec3 u_lightColor;
+          uniform vec3 u_objectColor;
+          void main() {
+            float ambientStrength = 0.5;
+            vec3 ambient = ambientStrength * u_lightColor;
+          //diffuse
+            vec3 norm = normalize(v_Normal);
+            vec3 lightDir = vec3(normalize(u_lightPos - vec3(v_FragPos)));
+            float diff = max(dot(norm, lightDir), 0.0);
+            vec3 diffuse = diff * u_lightColor;
           // specular
-          '  float specularStrength = 0.5;\n' +
-          '  vec3 viewDir = normalize(u_viewPos - u_FragPos);\n'+
-          '  vec3 reflectDir = reflect(-lightDir, norm);\n' + 
-          '  float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32);\n'+
-          '  vec3 specular = specularStrength * spec * u_lightColor;\n'+  
-        
-          '  vec3 result = (ambient + diffuse + specular) * u_objectColor;\n' +
-          '  g_FragColor = vec4(result, 1.0);\n' +
-          '}\n';
-        var FSHADER_SOURCE =
-          '#ifdef GL_ES\n' +
-          'precision mediump float;\n' +
-          '#endif\n' +
-          'varying vec4 v_Color;\n' +
-          'void main() {\n' +
-          '  gl_FragColor = v_Color;\n' +
-          '}\n';
+            float specularStrength = 0.5;
+            vec3 viewDir = vec3(normalize(u_viewPos - vec3(v_FragPos)));
+            vec3 reflectDir = reflect(-lightDir, norm);
+            float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
+            vec3 specular = specularStrength * spec * u_lightColor;
+
+            //vec3 result = (ambient + diffuse + specular) * u_objectColor;
+            vec3 result = vec3(v_FragPos) * u_objectColor;
+            gl_FragColor = vec4(result, 1.0);
+          }`;
+
+        var VSHADER_SOURCE_LIGHT =
+            `attribute vec4 a_Position;
+            uniform mat4 u_lightmvpMatrix;
+            void main() {
+               gl_Position = u_lightmvpMatrix * a_Position;
+            //   gl_Position = a_Position;
+          }`;
+
         var FSHADER_SOURCE_LIGHT =
-          '#ifdef GL_ES\n' +
-          'precision mediump float;\n' +
-          '#endif\n' +
-          'void main() {\n' +
-          '  gl_FragColor = vec4(1.0);\n' +
-          '}\n';
+          `#ifdef GL_ES
+          precision mediump float;
+          #endif
+          void main() {
+            gl_FragColor = vec4(1.0);
+          }`;
 
         function main() {
             // Retrieve <canvas> element
             var canvas = document.getElementById('webgl');
-
             // Get the rendering context for WebGL
             var gl = getWebGLContext(canvas);
             if (!gl) {
                 console.log('Failed to get the rendering context for WebGL');
                 return;
             }
-
             // Initialize shaders
             if (!initShaders(gl, _VSHADER_SOURCE, _FSHADER_SOURCE)) {
                 console.log('Failed to intialize shaders.');
@@ -146,17 +110,18 @@
             var u_viewPos = gl.getUniformLocation(gl.program, 'u_viewPos');
             var u_MvpMatrix = gl.getUniformLocation(gl.program, 'u_MvpMatrix');
             var u_ModelMatrix = gl.getUniformLocation(gl.program, 'u_ModelMatrix');
+            var u_normalMatrix = gl.getUniformLocation(gl.program, 'u_normalMatrix');
             if (!u_objectColor || !u_lightColor || !u_lightPos || !u_viewPos || !u_MvpMatrix || !u_ModelMatrix) {
                 console.log('Failed to get the storage location');
                 return;
             }
             // Set the light color (white)
-            var cameraPos = [0.0, 0.0, 3.0];
-            var light_Pos = new Vector3([1.2, 1.0, 2.0]);
+            var cameraPos = [5.0, 5.0, 10.0];
+            var light_Pos = new Vector3([0.0, 25.0, -15.0]);
             gl.uniform3f(u_objectColor, 1.0, 0.5, 0.31);
             gl.uniform3f(u_lightColor, 1.0, 1.0, 1.0);
             gl.uniform3f(u_lightPos, light_Pos.elements[0], light_Pos.elements[1], light_Pos.elements[2]);
-            gl.uniform3f(u_viewPos, viewPos[0], viewPos[1], viewPos[2]);
+            gl.uniform3f(u_viewPos, cameraPos[0], cameraPos[1], cameraPos[2]);
             // Set the light direction (in the world coordinate)
             
             //var lightDirection = new Vector3([16.0,14.0,20.0]);
@@ -166,13 +131,14 @@
 
             // Calculate the view projection matrix
             var mvpMatrix = new Matrix4();    // Model view projection matrix
-            mvpMatrix.setPerspective(45, canvas.width / canvas.height, 0.1, 100);
+            mvpMatrix.setPerspective(30, canvas.width / canvas.height, 1, 100);
             mvpMatrix.lookAt(cameraPos[0], cameraPos[1], cameraPos[2], 0, 0, 0, 0, 1, 0);
             //var _mvpMatrix = new Matrix4();
             //_mvpMatrix.set(mvpMatrix);
             //mvpMatrix.scale(0.5, 0.5, 0.5);//缩小一半
-            var normalMatrix = new Matrix4(); // Transformation matrix for normals
+            var normalMatrix = new Matrix4(); // Transformation matrix for normals,法线矩阵
             var modelMatrix = new Matrix4();  // Model matrix
+            //modelMatrix.rotate(90, 0.0, 1.0, 0.0);
             mvpMatrix.multiply(modelMatrix);//
             //modelMatrix.setScale(1.0, 0.5, 0.5);
             //_mvpMatrix.multiply(modelMatrix);
@@ -180,8 +146,11 @@
             //normalMatrix.setInverseOf(modelMatrix);
             //normalMatrix.transpose();
             // Pass the model view projection matrix to the variable u_MvpMatrix
-            gl.uniformMatrix4fv(u_MvpMatrix, false, mvpMatrix.elements);
 
+            normalMatrix.setInverseOf(modelMatrix);
+            normalMatrix.transpose();
+            gl.uniformMatrix4fv(u_MvpMatrix, false, mvpMatrix.elements);
+            gl.uniformMatrix4fv(u_normalMatrix, false, normalMatrix.elements);
             // Clear color and depth buffer
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
             gl.drawElements(gl.TRIANGLES, n, gl.UNSIGNED_BYTE, 0);
@@ -191,7 +160,7 @@
 
         function drawLightcube(gl, mvpMatrix,n,light_Pos) {
             // Initialize shaders
-            if (!initShaders(gl, VSHADER_SOURCE, FSHADER_SOURCE_LIGHT)) {
+            if (!initShaders(gl, VSHADER_SOURCE_LIGHT, FSHADER_SOURCE_LIGHT)) {
                 console.log('Failed to intialize shaders.');
                 return;
             }
@@ -211,9 +180,13 @@
 
             //light_modelMatrix.setTranslate(3.0, 0.0, 0.0);
             light_mvpMatrix.multiply(light_modelMatrix);
-            var u_MvpMatrix = gl.getUniformLocation(gl.program, 'u_MvpMatrix');
-            gl.uniformMatrix4fv(u_MvpMatrix, false, light_mvpMatrix.elements);
+            var u_mvpMatrix = gl.getUniformLocation(gl.program, 'u_lightmvpMatrix');
+            gl.uniformMatrix4fv(u_mvpMatrix, false, light_mvpMatrix.elements);
             gl.drawElements(gl.TRIANGLES, n, gl.UNSIGNED_BYTE, 0);
+
+            var tick = function () {
+
+            }
         }
 
         function initVertexBuffers(gl) {
