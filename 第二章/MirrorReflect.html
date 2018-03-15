@@ -47,11 +47,12 @@
             float specularStrength = 0.5;
             vec3 viewDir = vec3(normalize(u_viewPos - vec3(v_FragPos)));
             vec3 reflectDir = reflect(-lightDir, norm);
-            float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
+            float spec = pow(max(dot(viewDir, reflectDir), 0.0), 4.0);
+            //float spec = dot(viewDir, reflectDir);
             vec3 specular = specularStrength * spec * u_lightColor;
 
-            //vec3 result = (ambient + diffuse + specular) * u_objectColor;
-            vec3 result = vec3(v_FragPos) * u_objectColor;
+            vec3 result = (ambient + diffuse + specular) * u_objectColor;
+            //vec3 result = vec3(v_FragPos) * u_objectColor;
             gl_FragColor = vec4(result, 1.0);
           }`;
 
@@ -117,7 +118,7 @@
             }
             // Set the light color (white)
             var cameraPos = [5.0, 5.0, 10.0];
-            var light_Pos = new Vector3([0.0, 25.0, -15.0]);
+            var light_Pos = new Vector3([0.0, 15.0, -50.0]);
             gl.uniform3f(u_objectColor, 1.0, 0.5, 0.31);
             gl.uniform3f(u_lightColor, 1.0, 1.0, 1.0);
             gl.uniform3f(u_lightPos, light_Pos.elements[0], light_Pos.elements[1], light_Pos.elements[2]);
@@ -139,6 +140,7 @@
             var normalMatrix = new Matrix4(); // Transformation matrix for normals,法线矩阵
             var modelMatrix = new Matrix4();  // Model matrix
             //modelMatrix.rotate(90, 0.0, 1.0, 0.0);
+            gl.uniformMatrix4fv(u_ModelMatrix, false, modelMatrix.elements);
             mvpMatrix.multiply(modelMatrix);//
             //modelMatrix.setScale(1.0, 0.5, 0.5);
             //_mvpMatrix.multiply(modelMatrix);
