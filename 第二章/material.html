@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>镜面高光</title>
+    <title>材质</title>
     <script src="../lib/webgl-utils.js"></script>
     <script src="../lib/webgl-debug.js"></script>
     <script src="../lib/cuon-utils.js"></script>
@@ -28,22 +28,34 @@
           `#ifdef GL_ES
           precision mediump float;
           #endif
+          struct Material {
+               vec3 ambient;
+               vec3 diffuse;
+               vec3 specular:
+               float shininess;
+          };
+          struct Light {
+               vec3 position;
+               vec3 ambient;
+               vec3 diffuse;
+               vec3 specular:
+          };
+
           varying vec3 v_Normal;
           varying vec4 v_FragPos;
 
-          uniform vec3 u_lightPos;
           uniform vec3 u_viewPos;
-          uniform vec3 u_lightColor;
-          uniform vec3 u_objectColor;
+          uniform Material material;
+          uniform Light light;
           void main() {
-            float ambientStrength = 0.3;
+            /*float ambientStrength = 0.3;
             vec3 ambient = ambientStrength * u_lightColor;
-          //diffuse
+            //diffuse
             vec3 norm = normalize(v_Normal);
             vec3 lightDir = vec3(normalize(u_lightPos - vec3(v_FragPos)));
             float diff = max(dot(norm, lightDir), 0.0);
             vec3 diffuse = diff * u_lightColor*.05;
-          // specular
+            // specular
             float specularStrength = 0.6;
             vec3 viewDir = vec3(normalize(u_viewPos - vec3(v_FragPos)));
             vec3 reflectDir = reflect(-lightDir, norm);
@@ -53,6 +65,24 @@
 
             vec3 result = (ambient + diffuse + specular) * u_objectColor;
             //vec3 result = vec3(v_FragPos) * u_objectColor;
+            gl_FragColor = vec4(result, 1.0);*/
+
+            //ambient
+            vec3 ambient = light.ambient * material.ambient;
+
+            //diffuse
+            vec3 norm = normalize(v_Normal);
+            vec3 lightDir = vec3(normalize(u_lightPos -vec3(v_FragPos)));
+            float diff = max(dot(norm, lightDir), 0.0);
+            vec3 diffuse = light.diffuse * (diff * material.diffuse);
+
+            //specular
+            vec3 viewDir = vec3(normalize(u_viewPos -vec3(v_FragPos)));
+            vec3 reflectDir = reflect(-lightDir, norm);
+            float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+            vec3 specular = light.specular * (spec * material.specular);
+
+            vec3 result = ambient +diffuse +specular;
             gl_FragColor = vec4(result, 1.0);
           }`;
 
@@ -96,7 +126,7 @@
 
             var u_objectColor = gl.getUniformLocation(gl.program, 'u_objectColor');
             var u_lightColor = gl.getUniformLocation(gl.program, 'u_lightColor');
-            var u_lightPos = gl.getUniformLocation(gl.program, 'u_lightPos');
+            var u_lightPos = gl.getUniformLocation(gl.program, 'light.position');
             var u_viewPos = gl.getUniformLocation(gl.program, 'u_viewPos');
             var u_MvpMatrix = gl.getUniformLocation(gl.program, 'u_MvpMatrix');
             var u_ModelMatrix = gl.getUniformLocation(gl.program, 'u_ModelMatrix');
@@ -113,6 +143,17 @@
             gl.uniform3f(u_lightPos, light_Pos.elements[0], light_Pos.elements[1], light_Pos.elements[2]);
             gl.uniform3f(u_viewPos, cameraPos[0], cameraPos[1], cameraPos[2]);
             // Set the light direction (in the world coordinate)
+
+            var lightColor =new Vector3([0.2, 0.7, 1.3]);
+            var diffuseColor = lightColor * new Vector3(0.5, 0.5, 0.5);
+            var ambientColor = diffuseColor * new Vector3(0.2, 0.2, 0.2);
+            var specularColor = new Vector3([1.0, 1.0, 1.0]);
+            var ulight_ambient = gl.getUniformLocation(gl.program, 'light.ambient');
+            gl.uniform3f(ulight_ambient, ambientColor, ambientColor, ambientColor);
+
+            var ulight_diffuse = gl.getUniformLocation(gl.program, 'light.diffuse');
+            gl.uniform3f(ulight_ambient, ambientColor, ambientColor, ambientColor);
+            var ulight_specular = gl.getUniformLocation(gl.program, 'light.specular');
 
             // Calculate the view projection matrix
             var mvpMatrix = new Matrix4();    // Model view projection matrix
