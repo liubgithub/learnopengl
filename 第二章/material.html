@@ -31,14 +31,14 @@
           struct Material {
                vec3 ambient;
                vec3 diffuse;
-               vec3 specular:
+               vec3 specular;
                float shininess;
           };
           struct Light {
                vec3 position;
                vec3 ambient;
                vec3 diffuse;
-               vec3 specular:
+               vec3 specular;
           };
 
           varying vec3 v_Normal;
@@ -72,7 +72,7 @@
 
             //diffuse
             vec3 norm = normalize(v_Normal);
-            vec3 lightDir = vec3(normalize(u_lightPos -vec3(v_FragPos)));
+            vec3 lightDir = vec3(normalize(light.position -vec3(v_FragPos)));
             float diff = max(dot(norm, lightDir), 0.0);
             vec3 diffuse = light.diffuse * (diff * material.diffuse);
 
@@ -83,6 +83,9 @@
             vec3 specular = light.specular * (spec * material.specular);
 
             vec3 result = ambient +diffuse +specular;
+            //gl_FragColor = vec4(specular, 1.0);
+            //gl_FragColor = vec4(v_Normal, 1.0);
+            //gl_FragColor = vec4(1.0,1.0,1.0,1.0);
             gl_FragColor = vec4(result, 1.0);
           }`;
 
@@ -124,36 +127,45 @@
                 return;
             }
 
-            var u_objectColor = gl.getUniformLocation(gl.program, 'u_objectColor');
-            var u_lightColor = gl.getUniformLocation(gl.program, 'u_lightColor');
+            //var u_objectColor = gl.getUniformLocation(gl.program, 'u_objectColor');
+            //var u_lightColor = gl.getUniformLocation(gl.program, 'u_lightColor');
             var u_lightPos = gl.getUniformLocation(gl.program, 'light.position');
             var u_viewPos = gl.getUniformLocation(gl.program, 'u_viewPos');
             var u_MvpMatrix = gl.getUniformLocation(gl.program, 'u_MvpMatrix');
             var u_ModelMatrix = gl.getUniformLocation(gl.program, 'u_ModelMatrix');
             var u_normalMatrix = gl.getUniformLocation(gl.program, 'u_normalMatrix');
-            if (!u_objectColor || !u_lightColor || !u_lightPos || !u_viewPos || !u_MvpMatrix || !u_ModelMatrix) {
+            if (!u_lightPos || !u_viewPos || !u_MvpMatrix || !u_ModelMatrix || !u_normalMatrix) {
                 console.log('Failed to get the storage location');
                 return;
             }
             // Set the light color (white)
-            var cameraPos = [5.0, 5.0, 10.0];
-            var light_Pos = new Vector3([-20.0, 18.0, -45.0]);
-            gl.uniform3f(u_objectColor, 1.0, 0.5, 0.31);
-            gl.uniform3f(u_lightColor, 1.0, 1.0, 1.0);
+            var cameraPos = [5.0, 15.0, 10.0];
+            var light_Pos = new Vector3([0.0, 20.0, -10.0]);
+            //gl.uniform3f(u_objectColor, 1.0, 0.5, 0.31);
+            //gl.uniform3f(u_lightColor, 1.0, 1.0, 1.0);
             gl.uniform3f(u_lightPos, light_Pos.elements[0], light_Pos.elements[1], light_Pos.elements[2]);
             gl.uniform3f(u_viewPos, cameraPos[0], cameraPos[1], cameraPos[2]);
             // Set the light direction (in the world coordinate)
 
-            var lightColor =new Vector3([0.2, 0.7, 1.3]);
-            var diffuseColor = lightColor.crossMultiply(new Vector3(0.5, 0.5, 0.5));
-            var ambientColor = diffuseColor.crossMultiply(new Vector3(0.2, 0.2, 0.2));
+            var lightColor =new Vector3([2.0*0.9, 0.7*0.9, 1.3*.86]);
+            var diffuseColor = new Vector3([lightColor.elements[0] * 0.5, lightColor.elements[1] * 0.5, lightColor.elements[2] * 0.5]);
+            var ambientColor =new Vector3([diffuseColor.elements[0] * 0.2, diffuseColor.elements[1] * 0.2, diffuseColor.elements[2] * 0.2]);
             var specularColor = new Vector3([1.0, 1.0, 1.0]);
             var ulight_ambient = gl.getUniformLocation(gl.program, 'light.ambient');
-            gl.uniform3f(ulight_ambient, ambientColor[0], ambientColor[1], ambientColor[2]);
-
+            gl.uniform3f(ulight_ambient, ambientColor.elements[0], ambientColor.elements[1], ambientColor.elements[2]);
             var ulight_diffuse = gl.getUniformLocation(gl.program, 'light.diffuse');
-            gl.uniform3f(ulight_ambient, ambientColor, ambientColor, ambientColor);
+            gl.uniform3f(ulight_diffuse, diffuseColor.elements[0], diffuseColor.elements[1], diffuseColor.elements[2]);
             var ulight_specular = gl.getUniformLocation(gl.program, 'light.specular');
+            gl.uniform3f(ulight_specular, 1.0, 1.0, 1.0);
+
+            var u_materialAmbient = gl.getUniformLocation(gl.program, 'material.ambient');
+            gl.uniform3f(u_materialAmbient, 1.0, 0.5, 0.31);
+            var u_materialDiffuse = gl.getUniformLocation(gl.program, 'material.diffuse');
+            gl.uniform3f(u_materialDiffuse, 1.0, 0.5, 0.31);
+            var u_materialSpecular = gl.getUniformLocation(gl.program, 'material.specular');
+            gl.uniform3f(u_materialSpecular, 0.5, 0.5, 0.5);
+            var u_materialShininess = gl.getUniformLocation(gl.program, 'material.shininess');
+            gl.uniform1f(u_materialShininess,8.0);
 
             // Calculate the view projection matrix
             var mvpMatrix = new Matrix4();    // Model view projection matrix
