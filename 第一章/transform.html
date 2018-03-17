@@ -3,10 +3,10 @@
 <head>
     <meta charset="utf-8" />
     <title>变换</title>
-    <script src="lib/webgl-utils.js"></script>
-    <script src="lib/webgl-debug.js"></script>
-    <script src="lib/cuon-utils.js"></script>
-    <script src="lib/cuon-matrix.js"></script>
+    <script src="../lib/webgl-utils.js"></script>
+    <script src="../lib/webgl-debug.js"></script>
+    <script src="../lib/cuon-utils.js"></script>
+    <script src="../lib/cuon-matrix.js"></script>
     <script type="text/javascript">
         // TexturedQuad.js (c) 2012 matsuda and kanda
         // Vertex shader program
@@ -64,11 +64,11 @@
             gl.clearColor(0.0, 0.0, 0.0, 1.0);
 
             // Set texture
-            if (!initTextures(gl, n, 'u_Sampler1', 'images/wall.jpg')) {
+            if (!initTextures(gl, n, 'u_Sampler1', '../images/wall.jpg')) {
                 console.log('Failed to intialize the texture.');
                 return;
             }
-            if (!initTextures(gl, n,'u_Sampler2', 'images/awesomeface.png')) {
+            if (!initTextures(gl, n,'u_Sampler2', '../images/awesomeface.png')) {
                 console.log('Failed to intialize the texture.');
                 return;
             }

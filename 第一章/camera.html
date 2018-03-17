@@ -1,12 +1,12 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <title>相机</title>
-    <script src="lib/webgl-utils.js"></script>
-    <script src="lib/webgl-debug.js"></script>
-    <script src="lib/cuon-utils.js"></script>
-    <script src="lib/cuon-matrix.js"></script>
+    <script src="../lib/webgl-utils.js"></script>
+    <script src="../lib/webgl-debug.js"></script>
+    <script src="../lib/cuon-utils.js"></script>
+    <script src="../lib/cuon-matrix.js"></script>
     <script type="text/javascript">
         // TexturedQuad.js (c) 2012 matsuda and kanda
         // Vertex shader program
@@ -79,11 +79,11 @@
             initEventHandlers(canvas, currentAngle);
 
             // Set texture
-            if (!initTextures(gl, 'u_Sampler1', 'images/wall.jpg',0)) {
+            if (!initTextures(gl, 'u_Sampler1', '../images/wall.jpg',0)) {
                 console.log('Failed to intialize the texture.');
                 return;
             }
-            if (!initTextures(gl, 'u_Sampler2', 'images/awesomeface.png',1)) {
+            if (!initTextures(gl, 'u_Sampler2', '../images/awesomeface.png',1)) {
                 console.log('Failed to intialize the texture.');
                 return;
             }

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>材质</title>
+    <title>光照贴图</title>
     <script src="../lib/webgl-utils.js"></script>
     <script src="../lib/webgl-debug.js"></script>
     <script src="../lib/cuon-utils.js"></script>
@@ -13,15 +13,18 @@
         var _VSHADER_SOURCE =
           `attribute vec4 a_Position;
            attribute vec4 a_Normal;        // Normal
+           attribute vec2 a_TextCoords;
            varying vec4 v_FragPos;
            varying vec3 v_Normal;
+           varying vec2 v_TextCoords;
            uniform mat4 u_MvpMatrix;
            uniform mat4 u_normalMatrix;   //transpose(inverse(u_ModelMatrix))这个过程在js里算的
            uniform mat4 u_ModelMatrix;    // Model matrix
            void main() {
             v_FragPos = u_ModelMatrix * a_Position;
             v_Normal = normalize(vec3(u_normalMatrix * a_Normal));
-             gl_Position = u_MvpMatrix * a_Position;
+            v_TextCoords = a_TextCoords;
+            gl_Position = u_MvpMatrix * a_Position;
          }`;
         // Fragment shader program
         var _FSHADER_SOURCE =
@@ -29,8 +32,7 @@
           precision mediump float;
           #endif
           struct Material {
-               vec3 ambient;
-               vec3 diffuse;
+               sampler2D diffuse;
                vec3 specular;
                float shininess;
           };
@@ -41,21 +43,22 @@
                vec3 specular;
           };
 
-          varying vec3 v_Normal;
           varying vec4 v_FragPos;
+          varying vec3 v_Normal;
+          varying vec2 v_TextCoords;
 
           uniform vec3 u_viewPos;
           uniform Material material;
           uniform Light light;
           void main() {
             //ambient
-            vec3 ambient = light.ambient * material.ambient;
+            vec3 ambient = light.ambient * texture2D(material.diffuse, v_TextCoords).rgb;
 
             //diffuse
             vec3 norm = normalize(v_Normal);
             vec3 lightDir = vec3(normalize(light.position -vec3(v_FragPos)));
             float diff = max(dot(norm, lightDir), 0.0);
-            vec3 diffuse = light.diffuse * (diff * material.diffuse);
+            vec3 diffuse = light.diffuse * diff * texture2D(material.diffuse, v_TextCoords).rgb;
 
             //specular
             vec3 viewDir = vec3(normalize(u_viewPos -vec3(v_FragPos)));
@@ -65,6 +68,7 @@
 
             vec3 result = ambient +diffuse +specular;
             gl_FragColor = vec4(result, 1.0);
+            //gl_FragColor = texture2D(material.diffuse, v_TextCoords);
           }`;
 
         var VSHADER_SOURCE_LIGHT =
@@ -104,7 +108,9 @@
                 console.log('Failed to set the vertex information');
                 return;
             }
-
+            initTextures(gl, n,drawCube);
+        }
+        function drawCube(gl,n) {
             //var u_objectColor = gl.getUniformLocation(gl.program, 'u_objectColor');
             //var u_lightColor = gl.getUniformLocation(gl.program, 'u_lightColor');
             var u_lightPos = gl.getUniformLocation(gl.program, 'light.position');
@@ -117,7 +123,7 @@
                 return;
             }
             // Set the light color (white)
-            var cameraPos = [5.0, 15.0, 10.0];
+            var cameraPos = [5.0, 10.0, 10.0];
             var light_Pos = new Vector3([0.0, 20.0, -10.0]);
             //gl.uniform3f(u_objectColor, 1.0, 0.5, 0.31);
             //gl.uniform3f(u_lightColor, 1.0, 1.0, 1.0);
@@ -125,21 +131,21 @@
             gl.uniform3f(u_viewPos, cameraPos[0], cameraPos[1], cameraPos[2]);
             // Set the light direction (in the world coordinate)
 
-            var lightColor =new Vector3([2.0*0.9, 0.7*0.9, 1.3*.86]);
-            var diffuseColor = new Vector3([lightColor.elements[0] * 0.5, lightColor.elements[1] * 0.5, lightColor.elements[2] * 0.5]);
-            var ambientColor =new Vector3([diffuseColor.elements[0] * 0.2, diffuseColor.elements[1] * 0.2, diffuseColor.elements[2] * 0.2]);
-            var specularColor = new Vector3([1.0, 1.0, 1.0]);
+            //var lightColor =new Vector3([2.0*0.9, 0.7*0.9, 1.3*.86]);
+            //var diffuseColor = new Vector3([lightColor.elements[0] * 0.5, lightColor.elements[1] * 0.5, lightColor.elements[2] * 0.5]);
+            //var ambientColor =new Vector3([diffuseColor.elements[0] * 0.2, diffuseColor.elements[1] * 0.2, diffuseColor.elements[2] * 0.2]);
+            //var specularColor = new Vector3([1.0, 1.0, 1.0]);
             var ulight_ambient = gl.getUniformLocation(gl.program, 'light.ambient');
-            gl.uniform3f(ulight_ambient, ambientColor.elements[0], ambientColor.elements[1], ambientColor.elements[2]);
+            gl.uniform3f(ulight_ambient, 0.2, 0.2, 0.2);
             var ulight_diffuse = gl.getUniformLocation(gl.program, 'light.diffuse');
-            gl.uniform3f(ulight_diffuse, diffuseColor.elements[0], diffuseColor.elements[1], diffuseColor.elements[2]);
+            gl.uniform3f(ulight_diffuse, 0.5, 0.5, 0.5);
             var ulight_specular = gl.getUniformLocation(gl.program, 'light.specular');
             gl.uniform3f(ulight_specular, 1.0, 1.0, 1.0);
 
-            var u_materialAmbient = gl.getUniformLocation(gl.program, 'material.ambient');
-            gl.uniform3f(u_materialAmbient, 1.0, 0.5, 0.31);
-            var u_materialDiffuse = gl.getUniformLocation(gl.program, 'material.diffuse');
-            gl.uniform3f(u_materialDiffuse, 1.0, 0.5, 0.31);
+            //var u_materialAmbient = gl.getUniformLocation(gl.program, 'material.ambient');
+            //gl.uniform3f(u_materialAmbient, 1.0, 0.5, 0.31);
+            //var u_materialDiffuse = gl.getUniformLocation(gl.program, 'material.diffuse');
+            //gl.uniform3f(u_materialDiffuse, 1.0, 0.5, 0.31);
             var u_materialSpecular = gl.getUniformLocation(gl.program, 'material.specular');
             gl.uniform3f(u_materialSpecular, 0.5, 0.5, 0.5);
             var u_materialShininess = gl.getUniformLocation(gl.program, 'material.shininess');
@@ -147,14 +153,14 @@
 
             // Calculate the view projection matrix
             var mvpMatrix = new Matrix4();    // Model view projection matrix
-            mvpMatrix.setPerspective(45, canvas.width / canvas.height, 1, 100);
+            mvpMatrix.setPerspective(35, gl.canvas.width / gl.canvas.height, 1, 100);
             mvpMatrix.lookAt(cameraPos[0], cameraPos[1], cameraPos[2], 0, 0, 0, 0, 1, 0);
             //var cuble_mvpMatrix = new Matrix4();
             //cuble_mvpMatrix.set(mvpMatrix);
             //mvpMatrix.scale(0.5, 0.5, 0.5);//缩小一半
             var normalMatrix = new Matrix4(); // Transformation matrix for normals,法线矩阵
             var modelMatrix = new Matrix4();  // Model matrix
-            modelMatrix.scale(4.0, 1.0, 4.0);
+            modelMatrix.scale(2.0, 2.0, 2.0);
             gl.uniformMatrix4fv(u_ModelMatrix, false, modelMatrix.elements);
             mvpMatrix.multiply(modelMatrix);//
             normalMatrix.setInverseOf(modelMatrix);
@@ -167,10 +173,9 @@
             // Clear color and depth buffer
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
             gl.drawElements(gl.TRIANGLES, n, gl.UNSIGNED_BYTE, 0);
-             // Draw the cube
+             // Draw the light cube
              drawLightcube(gl, mvpMatrix, n, light_Pos);
         }
-
         function drawLightcube(gl, mvpMatrix,n,light_Pos) {
             // Initialize shaders
             if (!initShaders(gl, VSHADER_SOURCE_LIGHT, FSHADER_SOURCE_LIGHT)) {
@@ -183,7 +188,7 @@
             light_mvpMatrix.set(mvpMatrix);
             light_modelMatrix.scale(0.1, 0.1, 0.1);
             light_modelMatrix.translate(light_Pos.elements[0], light_Pos.elements[1], light_Pos.elements[2]);
-            light_modelMatrix.scale(0.25, 1.0, 0.25);
+            light_modelMatrix.scale(0.5, 0.5, 0.5);
             //light_modelMatrix.rotate(currAngle, 0, 1, 0);
             light_mvpMatrix.multiply(light_modelMatrix);
             var u_mvpMatrix = gl.getUniformLocation(gl.program, 'u_lightmvpMatrix');
@@ -230,6 +235,14 @@
               0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0   // v4-v7-v6-v5 back
             ]);
 
+            var texCoords = new Float32Array([   // Texture coordinates
+               1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,    // v0-v1-v2-v3 front
+               0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0,    // v0-v3-v4-v5 right
+               1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,    // v0-v5-v6-v1 up
+               1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,    // v1-v6-v7-v2 left
+               0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0,    // v7-v4-v3-v2 down
+               0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0     // v4-v7-v6-v5 back
+            ]);
 
             // Indices of the vertices
             var indices = new Uint8Array([
@@ -245,6 +258,7 @@
             // Write the vertex property to buffers (coordinates, colors and normals)
             if (!initArrayBuffer(gl, 'a_Position', vertices, 3, gl.FLOAT)) return -1;
             //if (!initArrayBuffer(gl, 'a_Color', colors, 3, gl.FLOAT)) return -1;//直接赋值
+            if (!initArrayBuffer(gl, 'a_TextCoords', texCoords, 2, gl.FLOAT)) return -1;
             if (!initArrayBuffer(gl, 'a_Normal', normals, 3, gl.FLOAT)) return -1;
 
             // Write the indices to the buffer object
@@ -283,6 +297,44 @@
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
             return true;
+        }
+
+        function initTextures(gl, n, drawCube) {
+            var texture = gl.createTexture();   // Create a texture object
+            if (!texture) {
+                console.log('Failed to create the texture object');
+                return null;
+            }
+
+            var image = new Image();  // Create a image object
+            if (!image) {
+                console.log('Failed to create the image object');
+                return null;
+            }
+            // Register the event handler to be called when image loading is completed
+            image.onload = function () {
+                // Write the image data to texture object
+                gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);  // Flip the image Y coordinate
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_2D, texture);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+                //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+                // Pass the texure unit 0 to u_Sampler
+                //gl.useProgram(program);
+                var u_Sampler = gl.getUniformLocation(gl.program, 'material.diffuse');
+                gl.uniform1i(u_Sampler, 0);
+                drawCube(gl, n);
+                //gl.bindTexture(gl.TEXTURE_2D, null); // Unbind texture
+            };
+
+            // Tell the browser to load an Image
+            image.src = '../images/container2.png';
+
+            return texture;
         }
     </script>
 </head>
