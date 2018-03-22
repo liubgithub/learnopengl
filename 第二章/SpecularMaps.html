@@ -329,7 +329,9 @@
                 var u_Sampler = gl.getUniformLocation(gl.program, uniformLocation);
                 gl.uniform1i(u_Sampler, index);
                 if (drawCube && index == 1) {
-                    drawCube(gl, n);
+                    setTimeout(function () {
+                        drawCube(gl, n);
+                    }, 300);
                 }
                 //gl.bindTexture(gl.TEXTURE_2D, null); // Unbind texture
             };
