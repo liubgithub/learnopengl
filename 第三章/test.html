@@ -64,7 +64,7 @@ var TEXTURE_FSHADER_SOURCE =
   '  vec4 color = texture2D(u_Sampler, v_TexCoord);\n' +
   '  gl_FragColor = vec4(color.rgb * v_NdotL, color.a);\n' +
   '}\n';
- 
+
 var GRASS_VSHADER_SOURCE =
    'attribute vec4 a_Position;\n' +
   'attribute vec2 a_TexCoord;\n' +
@@ -118,11 +118,11 @@ function main() {
   texProgram.u_NormalMatrix = gl.getUniformLocation(texProgram, 'u_NormalMatrix');
   texProgram.u_Sampler = gl.getUniformLocation(texProgram, 'u_Sampler');
 
-  if (solidProgram.a_Position < 0 || solidProgram.a_Normal < 0 || 
+  if (solidProgram.a_Position < 0 || solidProgram.a_Normal < 0 ||
       !solidProgram.u_MvpMatrix || !solidProgram.u_NormalMatrix ||
       texProgram.a_Position < 0 || texProgram.a_Normal < 0 || texProgram.a_TexCoord < 0 ||
-      !texProgram.u_MvpMatrix || !texProgram.u_NormalMatrix || !texProgram.u_Sampler) { 
-    console.log('Failed to get the storage location of attribute or uniform variable'); 
+      !texProgram.u_MvpMatrix || !texProgram.u_NormalMatrix || !texProgram.u_Sampler) {
+    console.log('Failed to get the storage location of attribute or uniform variable');
     return;
   }
 
@@ -139,7 +139,7 @@ function main() {
     console.log('Failed to intialize the texture.');
     return;
   }
-  
+
   // Set the clear color and enable the depth test
   gl.enable(gl.DEPTH_TEST);
   gl.clearColor(0.0, 0.0, 0.0, 1.0);
@@ -156,7 +156,7 @@ function main() {
   drawSolidCube(gl, solidProgram, cube, 0, currentAngle, viewProjMatrix);
     // Draw a cube with texture
   //drawTexCube(gl, texProgram, cube, texture, 0, currentAngle, viewProjMatrix);
- 
+
   setTimeout(function () {
       drawGrass(gl, viewProjMatrix);
   }, 100);
@@ -339,7 +339,7 @@ function initVertexBuffers(gl) {
   o.normalBuffer = initArrayBufferForLaterUse(gl, normals, 3, gl.FLOAT);
   o.texCoordBuffer = initArrayBufferForLaterUse(gl, texCoords, 2, gl.FLOAT);
   o.indexBuffer = initElementArrayBufferForLaterUse(gl, indices, gl.UNSIGNED_BYTE);
-  if (!o.vertexBuffer || !o.normalBuffer || !o.texCoordBuffer || !o.indexBuffer) return null; 
+  if (!o.vertexBuffer || !o.normalBuffer || !o.texCoordBuffer || !o.indexBuffer) return null;
 
   o.numIndices = indices.length;
 
