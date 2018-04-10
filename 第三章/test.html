@@ -193,7 +193,8 @@ function initGrassVertexBuffers(gl,program) {
     // Bind the buffer object to target
     gl.bindBuffer(gl.ARRAY_BUFFER, vertexTexCoordBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, verticesTexCoords, gl.STATIC_DRAW);
-
+    var indexBuffer = initElementArrayBufferForLaterUse(gl, indices, gl.UNSIGNED_BYTE);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);  // Bind indices
     var FSIZE = verticesTexCoords.BYTES_PER_ELEMENT;
     //Get the storage location of a_Position, assign and enable buffer
     var a_Position = gl.getAttribLocation(program, 'a_Position');
@@ -257,9 +258,10 @@ function loadTexture(gl,program, n, texture, u_Sampler, image,viewProjMatrix) {
 
     // Set the texture unit 0 to the sampler
     gl.uniform1i(u_Sampler, 0);
-    //gl.clear(gl.COLOR_BUFFER_BIT);   // Clear <canvas>
+    gl.clear(gl.COLOR_BUFFER_BIT);   // Clear <canvas>
     setTranslate(gl,program,viewProjMatrix, 20.0);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, n); // Draw the rectangle
+    //gl.drawArrays(gl.TRIANGLE_STRIP, 0, n); // Draw the rectangle
+    gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_BYTE,0);
 }
 function setTranslate(gl,program,viewProjMatrix, angle) {
     var g_modelMatrix = new Matrix4();
@@ -324,13 +326,6 @@ function initVertexBuffers(gl) {
     12,13,14,  12,14,15,    // left
     16,17,18,  16,18,19,    // down
     20,21,22,  20,22,23     // back
-  ]);
-  var grass_verticesTexCoords = new Float32Array([
-  // Vertex coordinates, texture coordinate
-  -0.5, 0.5, 0.0, 0.0, 1.0,
-  -0.5, -0.5, 0.0, 0.0, 0.0,
-   0.5, 0.5, 0.0, 1.0, 1.0,
-   0.5, -0.5, 0.0, 1.0, 0.0,
   ]);
   var o = new Object(); // Utilize Object to to return multiple buffer objects together
 
