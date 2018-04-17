@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>混合</title>
+    <title>片段丢弃</title>
     <script src="../lib/webgl-utils.js"></script>
     <script src="../lib/webgl-debug.js"></script>
     <script src="../lib/cuon-utils.js"></script>
@@ -248,7 +248,7 @@
               // Vertex coordinates, texture coordinate
               -0.5, 0.5, 0.0,
               -0.5, -0.5, 0.0,
-               0.5, 0.5, 0.0, 
+               0.5, 0.5, 0.0,
                0.5, -0.5, 0.0
             ]);
             var texCoords =  new Float32Array([
@@ -376,7 +376,7 @@
 
             gl.drawElements(gl.TRIANGLES, o.numIndices, o.indexBuffer.type, 0);   // Draw
         }
-       
+
         function drawPlane(gl, program, o, x, angle, viewProjMatrix) {
             // Coordinate transformation matrix
             var g_modelMatrix = new Matrix4();
@@ -467,7 +467,7 @@
             var newAngle = angle + (ANGLE_STEP * elapsed) / 1000.0;
             return newAngle % 360;
         }
-</script>
+    </script>
 </head>
 <body onload="main()">
     <div style="margin:0 auto;width:512px;height:512px">
