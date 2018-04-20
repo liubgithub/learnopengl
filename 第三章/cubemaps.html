@@ -6,8 +6,8 @@
     <script src="../lib/webgl-utils.js"></script>
     <script src="../lib/webgl-debug.js"></script>
     <script src="../lib/cuon-utils.js"></script>
-    <!--<script src="../lib/cuon-matrix.js"></script>-->
-    <script src="//cdn.bootcss.com/gl-matrix/2.3.2/gl-matrix-min.js"></script>
+    <script src="../lib/cuon-matrix.js"></script>
+    <!--<script src="//cdn.bootcss.com/gl-matrix/2.3.2/gl-matrix-min.js"></script>-->
     <script type="text/javascript">
       //天空盒着色器 
       var skybox_vs = `
@@ -68,7 +68,7 @@
 
        var canvas, gl, skybox_program, cube_program;
        var OFF_SCREEN_WIDTH, OFF_SCREEN_HEIGHT, cubeTextureTargets;
-       var sky, cube, fbo, skyTexture, pvMatrix, t;
+       var sky, cube, fbo, skyTexture, pvMatrix, t, eyePosition;
        function main() {
            canvas = document.getElementById('myCanvas'); // canvas
            gl = canvas.getContext('webgl'); // 上下文
@@ -118,12 +118,17 @@
 
            // 视图投影矩阵
            pvMatrix = createPvMatrix({ eye: eyePosition });
+           //改用比较熟悉的矩阵
+         
 
+           // Register the event handler
+           var currentAngle = [0.0, 0.0]; // Current rotation angle ([x-axis, y-axis] degrees)
+           initEventHandlers(canvas, currentAngle);
            // 渲染循环
            t = 0;
            var loop = function () {
-               drawFBO(t); // 在帧缓冲区中绘制天空盒
-               draw(t); // 常规绘制天空盒和立方体
+               drawFBO(currentAngle); // 在帧缓冲区中绘制天空盒
+               draw(currentAngle); // 常规绘制天空盒和立方体
                t++;
                window.requestAnimationFrame(loop);
            }
@@ -131,17 +136,17 @@
        }
 
 
-       function draw(t) {
+       function draw(currentAngle) {
            gl.viewport(0, 0, canvas.width, canvas.height);
            gl.clearColor(0.0, 0.0, 0.0, 1.0);
            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
            gl.enable(gl.DEPTH_TEST);
 
-           drawSky(t);
-           drawCube(t);
+           drawSky(currentAngle);
+           drawCube(currentAngle);
        }
 
-       function drawFBO(t) {
+       function drawFBO(currentAngle) {
            gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
 
            gl.viewport(0, 0, OFF_SCREEN_WIDTH, OFF_SCREEN_HEIGHT);
@@ -154,8 +159,10 @@
                gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, target, fbo.texture, null);
 
                var eye = new Float32Array([0.0, 0.0, 0.0]);
-               var up = vec3.create();
-               var center = vec3.create();
+               //var up = vec3.create();
+               //var center = vec3.create();
+               var up = new Float32Array([0.0, 0.0, 0.0]);
+               var center = new Float32Array([0.0, 0.0, 0.0]);
 
                switch (index) {
                    case 0:
@@ -197,13 +204,13 @@
                    up: up
                });
 
-               drawSky(t, pvMatrixFBO);
+               drawSky(currentAngle, pvMatrixFBO);
            });
 
            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
        }
 
-       function drawCube(t) {
+       function drawCube() {
            gl.enable(gl.CULL_FACE);
            gl.cullFace(gl.BACK);
 
@@ -217,7 +224,7 @@
            gl.vertexAttribPointer(cube_program.a_normal, 3, gl.FLOAT, false, 0, 0);
            gl.enableVertexAttribArray(cube_program.a_normal);
 
-           var mMatrix = mat4.create();
+           /*var mMatrix = mat4.create();
            var pvmMatrix = mat4.create();
            mat4.scale(mMatrix, mMatrix, new Float32Array([0.1, 0.1, 0.1]));
            mat4.multiply(pvmMatrix, pvMatrix, mMatrix);
@@ -230,6 +237,22 @@
            mat4.transpose(nMatrix, nMatrix);
            gl.uniformMatrix4fv(cube_program.u_normalMatrix, false, nMatrix);
 
+           gl.uniform3fv(cube_program.u_eyePosition, eyePosition);*/
+            
+           //换成自己比较熟悉的矩阵计算方式
+           var mMatrix = new Matrix4();
+           var pvmMatrix = new Matrix4();
+           pvmMatrix.set(pvMatrix);
+           mMatrix.scale(0.1, 0.1, 0.1);
+           pvmMatrix.multiply(mMatrix);
+           gl.uniformMatrix4fv(cube_program.u_matrix, false, pvmMatrix.elements);
+           gl.uniformMatrix4fv(cube_program.u_mMatrix, false, mMatrix.elements);
+
+           var nMatrix = new Matrix4();
+           nMatrix.setInverseOf(mMatrix);
+           nMatrix.transpose();
+           gl.uniformMatrix4fv(cube_program.u_normalMatrix, false, nMatrix.elements);
+
            gl.uniform3fv(cube_program.u_eyePosition, eyePosition);
 
            gl.activeTexture(gl.TEXTURE0);
@@ -239,7 +262,7 @@
            gl.drawElements(gl.TRIANGLES, cube.indexCount, gl.UNSIGNED_BYTE, 0);
        }
 
-       function drawSky(t, pvMatrixFBO) {
+       function drawSky(currentAngle, pvMatrixFBO) {
 
            gl.enable(gl.CULL_FACE);
            gl.cullFace(gl.FRONT);
@@ -259,12 +282,18 @@
            gl.activeTexture(gl.TEXTURE0);
            gl.bindTexture(gl.TEXTURE_CUBE_MAP, skyTexture);
 
-           var mMatrix = mat4.create();
+           /*var mMatrix = mat4.create();
            var pvmMatrix = mat4.create();
            mat4.rotate(mMatrix, mMatrix, Math.sin(t * 0.001) * Math.PI, new Float32Array([0.0, 1.0, 0.0]));
            mat4.multiply(pvmMatrix, _pvMatrix, mMatrix);
-           gl.uniformMatrix4fv(skybox_program.u_matrix, false, pvmMatrix);
-
+           gl.uniformMatrix4fv(skybox_program.u_matrix, false, pvmMatrix);*/
+           var mMatrix = new Matrix4();
+           var pvmMatrix = new Matrix4();
+           pvmMatrix.set(_pvMatrix);
+           mMatrix.rotate(currentAngle[0], 1, 0, 0);
+           mMatrix.rotate(currentAngle[1], 0, 1, 0);
+           pvmMatrix.multiply(mMatrix);
+           gl.uniformMatrix4fv(skybox_program.u_matrix, false, pvmMatrix.elements);
            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sky.iBuffer);
            gl.drawElements(gl.TRIANGLES, sky.indexCount, gl.UNSIGNED_BYTE, 0);
        }
@@ -313,6 +342,19 @@
        }
 
        function createPvMatrix(params) {
+           var params = params || {};
+           var eye = params.eye || new Float32Array([0.0, 0.0, 10.0]);
+           var center = params.center || new Float32Array([0.0, 0.0, 0.0]);
+           var up = params.up || new Float32Array([0.0, 1.0, 0.0]);
+
+           var pvMatrix = new Matrix4();
+           pvMatrix.setPerspective(70.0, canvas.width / canvas.height, 0.1, 2000.0);
+           pvMatrix.lookAt(eye[0], eye[1], eye[2], center[0], center[1], center[2], up[0], up[1], up[2]);
+
+           return pvMatrix;
+       }
+
+       function _createPvMatrix(params) {
            var params = params || {};
            var eye = params.eye || new Float32Array([0.0, 0.0, 10.0]);
            var center = params.center || new Float32Array([0.0, 0.0, 0.0]);
@@ -426,6 +468,35 @@
            _loop(urls[0]);
        }
 
+       function initEventHandlers(canvas, currentAngle) {
+           var dragging = false;         // Dragging or not
+           var lastX = -1, lastY = -1;   // Last position of the mouse
+
+           canvas.onmousedown = function (ev) {   // Mouse is pressed
+               var x = ev.clientX, y = ev.clientY;
+               // Start dragging if a moue is in <canvas>
+               var rect = ev.target.getBoundingClientRect();
+               if (rect.left <= x && x < rect.right && rect.top <= y && y < rect.bottom) {
+                   lastX = x; lastY = y;
+                   dragging = true;
+               }
+           };
+
+           canvas.onmouseup = function (ev) { dragging = false; }; // Mouse is released
+
+           canvas.onmousemove = function (ev) { // Mouse is moved
+               var x = ev.clientX, y = ev.clientY;
+               if (dragging) {
+                   var factor = 100 / canvas.height; // The rotation ratio
+                   var dx = factor * (x - lastX);
+                   var dy = factor * (y - lastY);
+                   // Limit x-axis rotation angle to -90 to 90 degrees
+                   currentAngle[0] = Math.max(Math.min(currentAngle[0] + dy, 90.0), -90.0);
+                   currentAngle[1] = currentAngle[1] + dx;
+               }
+               lastX = x, lastY = y;
+           };
+       }
     </script>
 </head>
 <body onload="main()">

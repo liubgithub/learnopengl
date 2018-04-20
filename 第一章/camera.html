@@ -219,7 +219,7 @@
             g_MvpMatrix.rotate(currentAngle[0], 1.0, 0.0, 0.0); // Rotation around x-axis
             g_MvpMatrix.rotate(currentAngle[1], 0.0, 1.0, 0.0); // Rotation around y-axis
             var cubesPos = getCubesPosition();
-            for(var i=0;i<cubesPos.length;i++){
+            for(var i=0;i<cubesPos.length;i++) {
                var rAngle = i * 20.0;
                g_modelMatrix.setTranslate(cubesPos[i][0]+0.1,cubesPos[i][1],cubesPos[i][2]+0.2);
                g_modelMatrix.rotate(rAngle,1.0, 0.3, 0.5);
