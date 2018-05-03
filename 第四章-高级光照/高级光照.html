@@ -2,90 +2,83 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>混合</title>
+    <title>高级光照</title>
     <script src="../lib/webgl-utils.js"></script>
     <script src="../lib/webgl-debug.js"></script>
     <script src="../lib/cuon-utils.js"></script>
     <script src="../lib/cuon-matrix.js"></script>
     <script type="text/javascript">
-        // ProgramObject.js (c) 2012 matsuda and kanda
-        // Vertex shader for single color drawing
-        var SOLID_VSHADER_SOURCE =
-          'attribute vec4 a_Position;\n' +
-          'attribute vec4 a_Normal;\n' +
-          'uniform mat4 u_MvpMatrix;\n' +
-          'uniform mat4 u_NormalMatrix;\n' +
-          'varying vec4 v_Color;\n' +
-          'void main() {\n' +
-          '  vec3 lightDirection = vec3(0.0, 0.0, 1.0);\n' + // Light direction(World coordinate)
-        '  vec4 color = vec4(0.0, 1.0, 1.0, 1.0);\n' +     // Face color
-        '  gl_Position = u_MvpMatrix * a_Position;\n' +
-          '  vec3 normal = normalize(vec3(u_NormalMatrix * a_Normal));\n' +
-          '  float nDotL = max(dot(normal, lightDirection), 0.0);\n' +
-          '  v_Color = vec4(color.rgb * nDotL, color.a);\n' +
-          '}\n';
+        // LightedCube.js (c) 2012 matsuda
+        // Vertex shader program
+        var VSHADER_SOURCE =
+          `attribute vec4 a_Position;
+           attribute vec4 a_Normal;        // Normal
+           varying vec4 v_FragPos;
+           varying vec3 v_Normal;
+           attribute vec2 a_TexCoord;
+           varying vec2 v_TextCoords;
+           uniform mat4 u_MvpMatrix;
+           uniform mat4 u_normalMatrix;   //transpose(inverse(u_ModelMatrix))这个过程在js里算的
+           uniform mat4 u_ModelMatrix;    // Model matrix
+           void main() {
+            v_FragPos = u_ModelMatrix * a_Position;
+            v_Normal = normalize(vec3(u_normalMatrix * a_Normal));
+            v_TextCoords = a_TexCoord;
+             gl_Position = u_MvpMatrix * a_Position;
+         }`;
+        // Fragment shader program
+        var FSHADER_SOURCE =
+          `#ifdef GL_ES
+          precision mediump float;
+          #endif
+          varying vec3 v_Normal;
+          varying vec4 v_FragPos;
+          varying vec2 v_TextCoords;
 
-        // Fragment shader for single color drawing
-        var SOLID_FSHADER_SOURCE =
-          '#ifdef GL_ES\n' +
-          'precision mediump float;\n' +
-          '#endif\n' +
-          'varying vec4 v_Color;\n' +
-          'void main() {\n' +
-          '  gl_FragColor = v_Color;\n' +
-          '}\n';
+          uniform vec3 u_lightPos;
+          uniform vec3 u_viewPos;
+          uniform vec3 u_lightColor;
+          //uniform vec3 u_objectColor;
 
-        // Vertex shader for texture drawing
-        var TEXTURE_VSHADER_SOURCE =
-          'attribute vec4 a_Position;\n' +
-          'attribute vec4 a_Normal;\n' +
-          'attribute vec2 a_TexCoord;\n' +
-          'uniform mat4 u_MvpMatrix;\n' +
-          'uniform mat4 u_NormalMatrix;\n' +
-          'varying float v_NdotL;\n' +
-          'varying vec2 v_TexCoord;\n' +
-          'void main() {\n' +
-          '  vec3 lightDirection = vec3(0.0, 0.0, 1.0);\n' + // Light direction(World coordinate)
-          '  gl_Position = u_MvpMatrix * a_Position;\n' +
-          '  vec3 normal = normalize(vec3(u_NormalMatrix * a_Normal));\n' +
-          '  v_NdotL = max(dot(normal, lightDirection), 0.0);\n' +
-          '  v_TexCoord = a_TexCoord;\n' +
-          '}\n';
+          uniform sampler2D u_Sampler;
+          void main() {
+            float ambientStrength = 0.3;
+            vec3 ambient = ambientStrength * u_lightColor*texture2D(u_Sampler, v_TextCoords).rgb;
+          //diffuse
+            vec3 norm = normalize(v_Normal);
+            vec3 lightDir = vec3(normalize(u_lightPos - vec3(v_FragPos)));
+            float diff = max(dot(norm, lightDir), 0.0);
+            vec3 diffuse = diff * u_lightColor*.05;
+          // specular
+            float specularStrength = 0.6;
+            vec3 viewDir = vec3(normalize(u_viewPos - vec3(v_FragPos)));
+            vec3 reflectDir = reflect(-lightDir, norm);
+            float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
+            //float spec = dot(viewDir, reflectDir);
+            vec3 specular = specularStrength * spec * u_lightColor;
 
-        // Fragment shader for texture drawing
-        var TEXTURE_FSHADER_SOURCE =
-          '#ifdef GL_ES\n' +
-          'precision mediump float;\n' +
-          '#endif\n' +
-          'uniform sampler2D u_Sampler;\n' +
-          'varying vec2 v_TexCoord;\n' +
-          'varying float v_NdotL;\n' +
-          'void main() {\n' +
-          '  vec4 color = texture2D(u_Sampler, v_TexCoord);\n' +
-          '  gl_FragColor = vec4(color.rgb * v_NdotL, color.a);\n' +
-          '}\n';
-        //Window
-        var WINDOW_VSHADER_SOURCE =
-         'attribute vec4 a_Position;\n' +
-         'attribute vec2 a_TexCoord;\n' +
-         'uniform mat4 u_transMatrix;\n' +
-         'varying vec2 v_TexCoord;\n' +
-         'void main() {\n' +
-         '  gl_Position =u_transMatrix * a_Position;\n' +
-         '  v_TexCoord = a_TexCoord;\n' +
-         '}\n';
+            //vec3 result = (ambient + diffuse + specular) * u_objectColor;
+            vec3 result = ambient +diffuse +specular;
+            //vec3 result = vec3(v_FragPos) * u_objectColor;
+            gl_FragColor = vec4(result, 1.0);
+          }`;
 
-        var WINDOW_FSHADER_SOURCE =
-          '#ifdef GL_ES\n' +
-          'precision mediump float;\n' +
-          '#endif\n' +
-          'uniform sampler2D u_Sampler;\n' +
-          'varying vec2 v_TexCoord;\n' +
-          'void main() {\n' +
-          'vec4 texColor = texture2D(u_Sampler, v_TexCoord);\n' +
-          '  gl_FragColor = texColor;\n' +
-          '}\n';
+        var VSHADER_SOURCE_LIGHT =
+            `attribute vec4 a_Position;
+            uniform mat4 u_lightmvpMatrix;
+            void main() {
+               gl_Position = u_lightmvpMatrix * a_Position;
+          }`;
 
+        var FSHADER_SOURCE_LIGHT =
+          `#ifdef GL_ES
+          precision mediump float;
+          #endif
+          void main() {
+            gl_FragColor = vec4(1.0);
+        }`;
+
+        var cameraPos, light_Pos;
         function main() {
             // Retrieve <canvas> element
             var canvas = document.getElementById('webgl');
@@ -98,67 +91,62 @@
             }
 
             // Initialize shaders
-            var solidProgram = createProgram(gl, SOLID_VSHADER_SOURCE, SOLID_FSHADER_SOURCE);
-            var texProgram = createProgram(gl, TEXTURE_VSHADER_SOURCE, TEXTURE_FSHADER_SOURCE);
-            var texWindowProgram = createProgram(gl, WINDOW_VSHADER_SOURCE, WINDOW_FSHADER_SOURCE);
-            if (!solidProgram || !texProgram) {
+            var lightProgram = createProgram(gl, VSHADER_SOURCE_LIGHT, FSHADER_SOURCE_LIGHT);
+            var planeProgram = createProgram(gl, VSHADER_SOURCE, FSHADER_SOURCE);
+            if (!lightProgram || !planeProgram) {
                 console.log('Failed to intialize shaders.');
                 return;
             }
 
             // Get storage locations of attribute and uniform variables in program object for single color drawing
-            solidProgram.a_Position = gl.getAttribLocation(solidProgram, 'a_Position');
-            solidProgram.a_Normal = gl.getAttribLocation(solidProgram, 'a_Normal');
-            solidProgram.u_MvpMatrix = gl.getUniformLocation(solidProgram, 'u_MvpMatrix');
-            solidProgram.u_NormalMatrix = gl.getUniformLocation(solidProgram, 'u_NormalMatrix');
+            lightProgram.a_Position = gl.getAttribLocation(lightProgram, 'a_Position');
+            //lightProgram.a_Normal = gl.getAttribLocation(solidProgram, 'a_Normal');
+            lightProgram.u_lightmvpMatrix = gl.getUniformLocation(lightProgram, 'u_lightmvpMatrix');
+            //lightProgram.u_NormalMatrix = gl.getUniformLocation(solidProgram, 'u_NormalMatrix');
 
             // Get storage locations of attribute and uniform variables in program object for texture drawing
-            texProgram.a_Position = gl.getAttribLocation(texProgram, 'a_Position');
-            texProgram.a_Normal = gl.getAttribLocation(texProgram, 'a_Normal');
-            texProgram.a_TexCoord = gl.getAttribLocation(texProgram, 'a_TexCoord');
-            texProgram.u_MvpMatrix = gl.getUniformLocation(texProgram, 'u_MvpMatrix');
-            texProgram.u_NormalMatrix = gl.getUniformLocation(texProgram, 'u_NormalMatrix');
-            texProgram.u_Sampler = gl.getUniformLocation(texProgram, 'u_Sampler');
+            //planeProgram.u_objectColor = gl.getUniformLocation(gl.program, 'u_objectColor');
+            planeProgram.u_lightColor = gl.getUniformLocation(planeProgram, 'u_lightColor');
+            planeProgram.u_lightPos = gl.getUniformLocation(planeProgram, 'u_lightPos');
+            planeProgram.u_viewPos = gl.getUniformLocation(planeProgram, 'u_viewPos');
 
-            //Get window locations of attribute and uniform variables in program object
-            texWindowProgram.a_Position = gl.getAttribLocation(texWindowProgram, 'a_Position');
-            texWindowProgram.a_TexCoord = gl.getAttribLocation(texWindowProgram, 'a_TexCoord');
-            texWindowProgram.u_MvpMatrix = gl.getUniformLocation(texWindowProgram, 'u_transMatrix');
-            texWindowProgram.u_Sampler = gl.getUniformLocation(texWindowProgram, 'u_Sampler');
 
-            if (solidProgram.a_Position < 0 || solidProgram.a_Normal < 0 ||
-                !solidProgram.u_MvpMatrix || !solidProgram.u_NormalMatrix ||
-                texProgram.a_Position < 0 || texProgram.a_Normal < 0 || texProgram.a_TexCoord < 0 ||
-                !texProgram.u_MvpMatrix || !texProgram.u_NormalMatrix || !texProgram.u_Sampler) {
-                console.log('Failed to get the storage location of attribute or uniform variable');
-                return;
-            }
+            planeProgram.a_Position = gl.getAttribLocation(planeProgram, 'a_Position');
+            planeProgram.a_Normal = gl.getAttribLocation(planeProgram, 'a_Normal');
+            planeProgram.a_TexCoord = gl.getAttribLocation(planeProgram, 'a_TexCoord');
+            planeProgram.u_MvpMatrix = gl.getUniformLocation(planeProgram, 'u_MvpMatrix');
+            planeProgram.u_NormalMatrix = gl.getUniformLocation(planeProgram, 'u_normalMatrix');
+            planeProgram.u_Sampler = gl.getUniformLocation(planeProgram, 'u_Sampler');
+
 
             // Set the vertex information
-            var cube = initVertexBuffers(gl);
-            if (!cube) {
+            var cubeLinght = initVertexBuffers(gl);
+
+            var planeObject = initPlaneVertexBuffers(gl);
+            if (!planeObject) {
                 console.log('Failed to set the vertex information');
                 return;
             }
-            var windowObject = initWindowVertexBuffers(gl);
+            //var windowObject = initWindowVertexBuffers(gl);
             // Set texture
-            var texture = initTextures(gl, texProgram, '../images/wall.jpg');
+            var texture = initTextures(gl, planeProgram, '../images/wall.jpg');
             if (!texture) {
                 console.log('Failed to intialize the texture.');
                 return;
             }
 
-            var windowTexture = initTextures(gl, texWindowProgram, '../images/window.png');
             // Set the clear color and enable the depth test
             gl.enable(gl.DEPTH_TEST);
-            gl.enable(gl.BLEND);
-            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+            //gl.enable(gl.BLEND);
+            //gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
             gl.clearColor(0.0, 0.0, 0.0, 1.0);
 
             // Calculate the view projection matrix
+            cameraPos = [5.0, 5.0, 10.0];
+            light_Pos = new Vector3([-20.0, 18.0, -45.0]);
             var viewProjMatrix = new Matrix4();
-            viewProjMatrix.setPerspective(30.0, canvas.width / canvas.height, 1.0, 100.0);
-            viewProjMatrix.lookAt(0.0, 0.0, 15.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+            viewProjMatrix.setPerspective(45.0, canvas.width / canvas.height, 1.0, 100.0);
+            viewProjMatrix.lookAt(cameraPos[0], cameraPos[1], cameraPos[2], 0, 0, 0, 0, 1, 0);
 
             // Start drawing
             var currentAngle = 0.0; // Current rotation angle (degrees)
@@ -167,11 +155,11 @@
 
                 gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
                 // Draw a cube in single color
-                drawSolidCube(gl, solidProgram, cube, 0.0, currentAngle, viewProjMatrix);
+                drawPlane(gl, planeProgram,planeObject, texture, 0.0, currentAngle, viewProjMatrix);
                 // Draw a cube with texture
-                drawTexCube(gl, texProgram, cube, texture, 2.0, currentAngle, viewProjMatrix);
+                drawLight(gl, lightProgram, cubeLinght,  2.0, currentAngle, viewProjMatrix);
 
-                drawWindow(gl, texWindowProgram, windowObject, windowTexture, 1.0, currentAngle, viewProjMatrix);
+                //drawWindow(gl, texWindowProgram, windowObject, windowTexture, 1.0, currentAngle, viewProjMatrix);
                 requestAnimationFrame(tick, canvas);
             };
             tick();
@@ -199,23 +187,23 @@
                1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0     // v4-v7-v6-v5 back
             ]);
 
-            var normals = new Float32Array([   // Normal
-               0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0,     // v0-v1-v2-v3 front
-               1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0,     // v0-v3-v4-v5 right
-               0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,     // v0-v5-v6-v1 up
-              -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0,     // v1-v6-v7-v2 left
-               0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0,     // v7-v4-v3-v2 down
-               0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0      // v4-v7-v6-v5 back
-            ]);
+            //var normals = new Float32Array([   // Normal
+            //   0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0,     // v0-v1-v2-v3 front
+            //   1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0,     // v0-v3-v4-v5 right
+            //   0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,     // v0-v5-v6-v1 up
+            //  -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0,     // v1-v6-v7-v2 left
+            //   0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0,     // v7-v4-v3-v2 down
+            //   0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0, 0.0, 0.0, -1.0      // v4-v7-v6-v5 back
+            //]);
 
-            var texCoords = new Float32Array([   // Texture coordinates
-               1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,    // v0-v1-v2-v3 front
-               0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0,    // v0-v3-v4-v5 right
-               1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,    // v0-v5-v6-v1 up
-               1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,    // v1-v6-v7-v2 left
-               0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0,    // v7-v4-v3-v2 down
-               0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0     // v4-v7-v6-v5 back
-            ]);
+            //var texCoords = new Float32Array([   // Texture coordinates
+            //   1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,    // v0-v1-v2-v3 front
+            //   0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0,    // v0-v3-v4-v5 right
+            //   1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,    // v0-v5-v6-v1 up
+            //   1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0,    // v1-v6-v7-v2 left
+            //   0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0,    // v7-v4-v3-v2 down
+            //   0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0     // v4-v7-v6-v5 back
+            //]);
 
             var indices = new Uint8Array([        // Indices of the vertices
                0, 1, 2, 0, 2, 3,    // front
@@ -230,10 +218,10 @@
 
             // Write vertex information to buffer object
             o.vertexBuffer = initArrayBufferForLaterUse(gl, vertices, 3, gl.FLOAT);
-            o.normalBuffer = initArrayBufferForLaterUse(gl, normals, 3, gl.FLOAT);
-            o.texCoordBuffer = initArrayBufferForLaterUse(gl, texCoords, 2, gl.FLOAT);
+            //o.normalBuffer = initArrayBufferForLaterUse(gl, normals, 3, gl.FLOAT);
+            //o.texCoordBuffer = initArrayBufferForLaterUse(gl, texCoords, 2, gl.FLOAT);
             o.indexBuffer = initElementArrayBufferForLaterUse(gl, indices, gl.UNSIGNED_BYTE);
-            if (!o.vertexBuffer || !o.normalBuffer || !o.texCoordBuffer || !o.indexBuffer) return null;
+            if (!o.vertexBuffer  || !o.indexBuffer) return null;
 
             o.numIndices = indices.length;
 
@@ -245,7 +233,7 @@
         }
 
         //初始化草的相关数据
-        function initWindowVertexBuffers(gl) {
+        function initPlaneVertexBuffers(gl) {
             var verticesCoords = new Float32Array([
               // Vertex coordinates, texture coordinate
               -1.0, 1.0, 0.0,
@@ -253,7 +241,7 @@
                1.0, 1.0, 0.0,
                1.0, -1.0, 0.0
             ]);
-            var texCoords =  new Float32Array([
+            var texCoords = new Float32Array([
               // Vertex coordinates, texture coordinate
               0.0, 1.0,
               0.0, 0.0,
@@ -278,7 +266,7 @@
             return o;
         }
 
-        function initTextures(gl, program,url) {
+        function initTextures(gl, program, url) {
             var texture = gl.createTexture();   // Create a texture object
             if (!texture) {
                 console.log('Failed to create the texture object');
@@ -314,20 +302,23 @@
             return texture;
         }
 
-        function drawSolidCube(gl, program, o, x, angle, viewProjMatrix) {
+        function drawLight(gl, program, o, x, angle, viewProjMatrix) {
             gl.useProgram(program);   // Tell that this program object is used
 
             // Assign the buffer objects and enable the assignment
             initAttributeVariable(gl, program.a_Position, o.vertexBuffer); // Vertex coordinates
-            initAttributeVariable(gl, program.a_Normal, o.normalBuffer);   // Normal
+            //initAttributeVariable(gl, program.a_Normal, o.normalBuffer);   // Normal
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);  // Bind indices
 
-            drawPlane(gl, program, o, x, angle, viewProjMatrix);   // Draw
+            drawCube(gl, program, o, x, angle, viewProjMatrix);   // Draw
         }
 
-        function drawWindow(gl, program, o, texture, x, angle, viewProjMatrix) {
+        function drawPlane(gl, program, o, texture, x, angle, viewProjMatrix) {
             gl.useProgram(program);   // Tell that this program object is used
 
+            gl.uniform3f(program.u_lightColor, 1.0, 1.0, 1.0);
+            gl.uniform3f(program.u_lightPos, light_Pos.elements[0], light_Pos.elements[1], light_Pos.elements[2]);
+            gl.uniform3f(program.u_viewPos, cameraPos[0], cameraPos[1], cameraPos[2]);
             // Assign the buffer objects and enable the assignment
             initAttributeVariable(gl, program.a_Position, o.vertexBuffer); // Vertex coordinates
             initAttributeVariable(gl, program.a_TexCoord, o.texCoordBuffer);// Texture coordinates
@@ -379,7 +370,7 @@
             gl.drawElements(gl.TRIANGLES, o.numIndices, o.indexBuffer.type, 0);   // Draw
         }
 
-        function drawPlane(gl, program, o, x, angle, viewProjMatrix) {
+        function _drawPlane(gl, program, o, x, angle, viewProjMatrix) {
             // Coordinate transformation matrix
             var g_modelMatrix = new Matrix4();
             var g_mvpMatrix = new Matrix4();
@@ -472,16 +463,8 @@
     </script>
 </head>
 <body onload="main()">
-    <div style="margin:0 auto;width:512px;height:512px">
-        <canvas id="webgl" width="512" height="512">
-            Please use a browser that supports "canvas"
-        </canvas>
-    </div>
-    <div>
-        1、纹理载入异步与画vao对象的问题，利用requestframe解决。<br>
-        2、缓冲数据vao的理解加深一步，可以看做数据初始化后一直存在，要画的时候直接去拿了在画。<br>
-        3、各种切换glsl<br>
-        4、discard的妙用<br>
-    </div>
+    <canvas id="webgl" width="512" height="512">
+        Please use a browser that supports "canvas"
+    </canvas>
 </body>
 </html>
