@@ -120,7 +120,7 @@
 
 
             // Set the vertex information
-            var cubeLinght = initVertexBuffers(gl);
+            var cubeLight = initVertexBuffers(gl);
 
             var planeObject = initPlaneVertexBuffers(gl);
             if (!planeObject) {
@@ -142,8 +142,8 @@
             gl.clearColor(0.0, 0.0, 0.0, 1.0);
 
             // Calculate the view projection matrix
-            cameraPos = [5.0, 5.0, 10.0];
-            light_Pos = new Vector3([-20.0, 18.0, -45.0]);
+            cameraPos = [0.0, 5.0, 10.0];
+            light_Pos = new Vector3([0.0, 4.0, 0.0]);
             var viewProjMatrix = new Matrix4();
             viewProjMatrix.setPerspective(45.0, canvas.width / canvas.height, 1.0, 100.0);
             viewProjMatrix.lookAt(cameraPos[0], cameraPos[1], cameraPos[2], 0, 0, 0, 0, 1, 0);
@@ -157,7 +157,7 @@
                 // Draw a cube in single color
                 drawPlane(gl, planeProgram,planeObject, texture, 0.0, currentAngle, viewProjMatrix);
                 // Draw a cube with texture
-                drawLight(gl, lightProgram, cubeLinght,  2.0, currentAngle, viewProjMatrix);
+                drawLight(gl, lightProgram, cubeLight,  2.0, currentAngle, viewProjMatrix);
 
                 //drawWindow(gl, texWindowProgram, windowObject, windowTexture, 1.0, currentAngle, viewProjMatrix);
                 requestAnimationFrame(tick, canvas);
@@ -310,7 +310,7 @@
             //initAttributeVariable(gl, program.a_Normal, o.normalBuffer);   // Normal
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);  // Bind indices
 
-            drawCube(gl, program, o, x, angle, viewProjMatrix);   // Draw
+            drawLightCube(gl, program, o, x, angle, viewProjMatrix);   // Draw
         }
 
         function drawPlane(gl, program, o, texture, x, angle, viewProjMatrix) {
@@ -357,34 +357,10 @@
             var g_mvpMatrix = new Matrix4();
             var g_normalMatrix = new Matrix4();
             // Calculate a model matrix
-            g_modelMatrix.setTranslate(x, -0.5, 2.0);
-            g_modelMatrix.rotate(20.0, 1.0, 0.0, 0.0);
-            g_modelMatrix.rotate(angle, 0.0, 1.0, 0.0);
-
-
-            // Calculate model view projection matrix and pass it to u_MvpMatrix
-            g_mvpMatrix.set(viewProjMatrix);
-            g_mvpMatrix.multiply(g_modelMatrix);
-            gl.uniformMatrix4fv(program.u_MvpMatrix, false, g_mvpMatrix.elements);
-
-            gl.drawElements(gl.TRIANGLES, o.numIndices, o.indexBuffer.type, 0);   // Draw
-        }
-
-        function _drawPlane(gl, program, o, x, angle, viewProjMatrix) {
-            // Coordinate transformation matrix
-            var g_modelMatrix = new Matrix4();
-            var g_mvpMatrix = new Matrix4();
-            var g_normalMatrix = new Matrix4();
-            // Calculate a model matrix
-            g_modelMatrix.setTranslate(x, -1.0, 0.0);
-            g_modelMatrix.rotate(20.0, 1.0, 0.0, 0.0);
-            g_modelMatrix.rotate(angle, 0.0, 1.0, 0.0);
-
-            g_modelMatrix.scale(3, 0.02, 3);
-            // Calculate transformation matrix for normals and pass it to u_NormalMatrix
-            g_normalMatrix.setInverseOf(g_modelMatrix);
-            g_normalMatrix.transpose();
-            gl.uniformMatrix4fv(program.u_NormalMatrix, false, g_normalMatrix.elements);
+            g_modelMatrix.setTranslate(0, 0.0, 0.0);
+            g_modelMatrix.rotate(90.0, 1.0, 0.0, 0.0);
+            g_modelMatrix.rotate(angle, 0.0, 0.0, 1.0);
+            g_modelMatrix.scale(2.5, 2.5, 1);
 
             // Calculate model view projection matrix and pass it to u_MvpMatrix
             g_mvpMatrix.set(viewProjMatrix);
@@ -394,25 +370,28 @@
             gl.drawElements(gl.TRIANGLES, o.numIndices, o.indexBuffer.type, 0);   // Draw
         }
 
-        function drawCube(gl, program, o, x, angle, viewProjMatrix) {
+
+        function drawLightCube(gl, program, o, x, angle, viewProjMatrix) {
             // Coordinate transformation matrix
             var g_modelMatrix = new Matrix4();
             var g_mvpMatrix = new Matrix4();
             var g_normalMatrix = new Matrix4();
             // Calculate a model matrix
-            g_modelMatrix.setTranslate(x, 0.0, 0.0);
+            g_modelMatrix.translate(light_Pos.elements[0], light_Pos.elements[1], light_Pos.elements[2]);
+            //g_modelMatrix.setTranslate(x, 0.0, 0.0);
             g_modelMatrix.rotate(20.0, 1.0, 0.0, 0.0);
             g_modelMatrix.rotate(angle, 0.0, 1.0, 0.0);
+            g_modelMatrix.scale(0.1, 0.1, 0.1);
 
             // Calculate transformation matrix for normals and pass it to u_NormalMatrix
-            g_normalMatrix.setInverseOf(g_modelMatrix);
-            g_normalMatrix.transpose();
-            gl.uniformMatrix4fv(program.u_NormalMatrix, false, g_normalMatrix.elements);
+            //g_normalMatrix.setInverseOf(g_modelMatrix);
+            //g_normalMatrix.transpose();
+            //gl.uniformMatrix4fv(program.u_NormalMatrix, false, g_normalMatrix.elements);
 
             // Calculate model view projection matrix and pass it to u_MvpMatrix
             g_mvpMatrix.set(viewProjMatrix);
             g_mvpMatrix.multiply(g_modelMatrix);
-            gl.uniformMatrix4fv(program.u_MvpMatrix, false, g_mvpMatrix.elements);
+            gl.uniformMatrix4fv(program.u_lightmvpMatrix, false, g_mvpMatrix.elements);
 
             gl.drawElements(gl.TRIANGLES, o.numIndices, o.indexBuffer.type, 0);   // Draw
         }
