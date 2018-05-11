@@ -11,53 +11,63 @@
         // Shadow.js (c) 2012 matsuda and tanaka
         // Vertex shader program for generating a shadow map
         var SHADOW_VSHADER_SOURCE =
-          'attribute vec4 a_Position;\n' +
-          'uniform mat4 u_MvpMatrix;\n' +
-          'void main() {\n' +
-          '  gl_Position = u_MvpMatrix * a_Position;\n' +
-          '}\n';
+          `attribute vec4 a_Position;
+          uniform mat4 u_MvpMatrix;
+          void main() {
+            gl_Position = u_MvpMatrix * a_Position;
+          }`;
 
         // Fragment shader program for generating a shadow map
         var SHADOW_FSHADER_SOURCE =
-          '#ifdef GL_ES\n' +
-          'precision mediump float;\n' +
-          '#endif\n' +
-          'void main() {\n' +
-          '  gl_FragColor = vec4(gl_FragCoord.z, 0.0, 0.0, 0.0);\n' + // Write the z-value in R
-          '}\n';
+          `#ifdef GL_ES
+          precision mediump float;
+          #endif
+          void main() {
+            const vec4 bitShift = vec4(1.0, 256.0, 256.0*256.0, 256.0 * 256.0 * 256.0);
+            const vec4 bitMask = vec4(1.0/256.0, 1.0/256.0, 1.0/256.0, 0.0);
+            vec4 rgbaDepth = fract(gl_FragCoord.z*bitShift);
+
+            rgbaDepth -= rgbaDepth.gbaa*bitMask;
+            gl_FragColor = rgbaDepth; // Write the z-value in R
+          }`;
 
         // Vertex shader program for regular drawing
         var VSHADER_SOURCE =
-          'attribute vec4 a_Position;\n' +
-          'attribute vec4 a_Color;\n' +
-          'uniform mat4 u_MvpMatrix;\n' +
-          'uniform mat4 u_MvpMatrixFromLight;\n' +
-          'varying vec4 v_PositionFromLight;\n' +
-          'varying vec4 v_Color;\n' +
-          'void main() {\n' +
-          '  gl_Position = u_MvpMatrix * a_Position;\n' +
-          '  v_PositionFromLight = u_MvpMatrixFromLight * a_Position;\n' +
-          '  v_Color = a_Color;\n' +
-          '}\n';
+          `attribute vec4 a_Position;
+          attribute vec4 a_Color;
+          uniform mat4 u_MvpMatrix;
+          uniform mat4 u_MvpMatrixFromLight;
+          varying vec4 v_PositionFromLight;
+          varying vec4 v_Color;
+          void main() {
+            gl_Position = u_MvpMatrix * a_Position;
+            v_PositionFromLight = u_MvpMatrixFromLight * a_Position;
+            v_Color = a_Color;
+          }`;
 
         // Fragment shader program for regular drawing
         var FSHADER_SOURCE =
-          '#ifdef GL_ES\n' +
-          'precision mediump float;\n' +
-          '#endif\n' +
-          'uniform sampler2D u_ShadowMap;\n' +
-          'varying vec4 v_PositionFromLight;\n' +
-          'varying vec4 v_Color;\n' +
-          'void main() {\n' +
-          '  vec3 shadowCoord = (v_PositionFromLight.xyz/v_PositionFromLight.w)/2.0 + 0.5;\n' +
-          '  vec4 rgbaDepth = texture2D(u_ShadowMap, shadowCoord.xy);\n' +
-          '  float depth = rgbaDepth.r;\n' + // Retrieve the z-value from R
-          '  float visibility = (shadowCoord.z > depth + 1.0/255.0) ? 0.7 : 1.0;\n' +//消除马赫带，因为即使同一个位置坐标，因为8位数和16位float数存在精度差
-          '  gl_FragColor = vec4(v_Color.rgb * visibility, v_Color.a);\n' +
-          '}\n';
+          `#ifdef GL_ES
+          precision mediump float;
+          #endif
+          uniform sampler2D u_ShadowMap;
+          varying vec4 v_PositionFromLight;
+          varying vec4 v_Color;
+          float unpackDepth(const in vec4 rgbaDepth) {
+             const vec4 bitShift = vec4(1.0, 1.0/256.0, 1.0/(256.0*256.0), 1.0/(256.0*256.0*256.0));
+             float depth = dot(rgbaDepth, bitShift);
+             return depth;
+          }
+          void main() {
+            vec3 shadowCoord = (v_PositionFromLight.xyz/v_PositionFromLight.w)/2.0 + 0.5;
+            vec4 rgbaDepth = texture2D(u_ShadowMap, shadowCoord.xy);
+            float depth = unpackDepth(rgbaDepth); // Retrieve the z-value from R
+            float visibility = (shadowCoord.z > depth + 1.0/1023.0) ? 0.7 : 1.0;//消除马赫带，因为即使同一个位置坐标，因为8位数和16位float数存在精度差
+            gl_FragColor = vec4(v_Color.rgb * visibility, v_Color.a);
+          }`;
 
-        var OFFSCREEN_WIDTH = 512, OFFSCREEN_HEIGHT = 512;
-        var LIGHT_X = 0, LIGHT_Y = 7, LIGHT_Z = 2; // Position of the light source
+        var OFFSCREEN_WIDTH = 2048, OFFSCREEN_HEIGHT = 2048;
+        var LIGHT_X = 0, LIGHT_Y =10, LIGHT_Z = 2; // Position of the light source
 
         function main() {
             // Retrieve <canvas> element
@@ -160,8 +170,9 @@
         var g_mvpMatrix = new Matrix4();
         function drawCuble(gl, program, cuble, angle, viewProjMatrix) {
             // Set rotate angle to model matrix and draw cuble
-            g_modelMatrix.setRotate(angle, 0, 1, 0);
-            g_modelMatrix.setTranslate(3, 0, 0);
+            g_modelMatrix.setTranslate(-0.5, 2, 0);
+            g_modelMatrix.rotate(angle, 0, 1, 0);
+            g_modelMatrix.scale(0.5, 0.5, 0.5);
             draw(gl, program, cuble, viewProjMatrix);
         }
 
@@ -231,7 +242,7 @@
             return o;
         }
 
-        function _initVertexBuffersForCuble(gl) {
+        function initVertexBuffersForTriangle(gl) {
             // Create a cuble
             //       v2
             //      / | 
@@ -458,5 +469,11 @@
     <canvas id="webgl" width="512" height="512">
         Please use a browser that supports "canvas"
     </canvas>
-   </body>
+    <img src="../images/阴影示例.png" />
+    <p>在右边的图中我们显示出同样的平行光和观察者。我们渲染一个点P处的片元，需要决定它是否在阴影中。</p>
+    <p>我们先得使用TT把P变换到光源的坐标空间里。既然点P是从光的透视图中看到的，它的z坐标就对应于它的深度，例子中这个值是0.9。</p>
+    <p>使用点P在光源的坐标空间的坐标，我们可以索引深度贴图，来获得从光的视角中最近的可见深度，结果是点C，最近的深度是0.4。</p>
+    <p>因为索引深度贴图的结果是一个小于点P的深度，我们可以断定P被挡住了，它在阴影中了。</p>
+    <p>深度映射由两个步骤组成：首先，我们渲染深度贴图，然后我们像往常一样渲染场景，使用生成的深度贴图来计算片元是否在阴影之中。</p>
+</body>
 </html>
