@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -22,24 +22,36 @@
           `#ifdef GL_ES
           precision mediump float;
           #endif
-          void main() {
-            const vec4 bitShift = vec4(1.0, 256.0, 256.0*256.0, 256.0 * 256.0 * 256.0);
+          vec4 pack (float depth) {
+            // 当光源与照射物间距离变远,z值会增大,而1个分量的8位已经不够存储深度值,所以扩充使用4个分量共32位进行存储
+            // 使用rgba 4字节共32位来存储z值,1个字节精度为1/256
+            const vec4 bitShift = vec4(1.0, 256.0, 256.0 * 256.0, 256.0 * 256.0 * 256.0);
             const vec4 bitMask = vec4(1.0/256.0, 1.0/256.0, 1.0/256.0, 0.0);
-            vec4 rgbaDepth = fract(gl_FragCoord.z*bitShift);
-
-            rgbaDepth -= rgbaDepth.gbaa*bitMask;
-            gl_FragColor = rgbaDepth; // Write the z-value in R
+            // gl_FragCoord:片元的坐标,fract():返回数值的小数部分
+            vec4 rgbaDepth = fract(depth * bitShift); //计算每个点的z值 
+            rgbaDepth -= rgbaDepth.gbaa * bitMask; // Cut off the value which do not fit in 8 bits
+            return rgbaDepth;
+          }
+          void main() {
+            gl_FragColor = pack(gl_FragCoord.z); // Write the z-value in R
           }`;
         //Vertex shader program for regular drawing
         var VSHADER_SOURCE =
          `attribute vec4 a_Position;
           attribute vec4 a_Color;
+          attribute vec4 a_Normal;
           uniform mat4 u_MvpMatrix;
+          uniform mat4 u_normalMatrix;
+          uniform mat4 u_modelMatrix;
           uniform mat4 u_MvpMatrixFromLight;
           varying vec4 v_PositionFromLight;
+          varying vec3 v_Position;
           varying vec4 v_Color;
+          varying vec3 v_Normal;
           void main() {
             gl_Position = u_MvpMatrix * a_Position;
+            v_Normal =normalize(vec3(u_normalMatrix * a_Normal));
+            v_Position = vec3(u_modelMatrix * a_Position);
             v_PositionFromLight = u_MvpMatrixFromLight * a_Position;
             v_Color = a_Color;
           }`;
@@ -50,8 +62,14 @@
             precision mediump float;
            #endif
             uniform sampler2D u_ShadowMap;
+            uniform vec3 u_lightPosition;
+            uniform vec3 u_viewPosition;
+            uniform vec3 u_lightColor;
+            uniform vec3 u_ambientColor;
             varying vec4 v_PositionFromLight;
+            varying vec3 v_Position;
             varying vec4 v_Color;
+            varying vec3 v_Normal;
             /**
             *释放深度值z
             */
@@ -60,14 +78,42 @@
               float depth = dot(rgbaDepth, bitShift);
               return depth;
             }
-            void main(){
-               //float bias = 0.005*tan(acos(cosTheta));// 根据光线与表面的夹角计算偏移量,用于消除马赫带
-               //bias = clamp(bias, 0.0015,0.01);
-               float bias = 1.0/1023.0;
+            void main() {
+               vec3 normal = normalize(v_Normal);
+               vec3 lightDirection = normalize(u_lightPosition -v_Position.xyz);
+               float cosTheta = max(dot(lightDirection, normal), 0.0);
+                // 计算漫反射亮度
+               vec3 diffuse = u_lightColor * v_Color.rgb * cosTheta;
+              // 计算环境光亮度
+              vec3 ambient = u_ambientColor * v_Color.rgb;
+
+              /**
+                * 高光部分
+              */
+             float shininess =10.0;
+             vec3 specularColor =vec3(1.0, 1.0, 1.0);//镜面反射光颜色
+             vec3 viewDirection = normalize(u_viewPosition-v_Position.xyz);// 反射方向
+
+             // phong 冯氏模型 高光部分更加集中
+             vec3 reflectionDirection = reflect(-lightDirection, normal);
+             float specularWeighting = pow(max(dot(reflectionDirection, viewDirection), 0.0), shininess);
+
+              // Blinn-Phong 宾氏模型 高光过渡更加自然
+              // vec3 halfwayDir = normalize(lightDirection + viewDirection);
+              // float specularWeighting = pow(max(dot(normal, halfwayDir), 0.0), shininess);
+
+              // 计算镜面高光亮度
+              vec3 specular = specularColor.rgb * specularWeighting;
+              // gl_FragColor = vec4((spotLight + ambient + specular), v_color.a);
+
+
+               float bias = 0.005*tan(acos(cosTheta));// 根据光线与表面的夹角计算偏移量,用于消除马赫带
+               bias = clamp(bias, 1.0/1023.0, 0.01);
+               //float bias = 1.0/1023.0;
                vec3 shadowCoord = (v_PositionFromLight.xyz/v_PositionFromLight.w)/2.0 + 0.5;
                float shadows = 0.0;
                float opacity = 0.7;
-               float texelSize = 1.0/1024.0;
+               float texelSize = 1.0/2048.0;
                vec4 rgbaDepth;
                for(float y=-1.5; y <= 1.5; y+=1.0){
                   for(float x=-1.5; x <=1.5; x += 1.0){
@@ -77,12 +123,16 @@
                 }
                 shadows = shadows/16.0;
                 float visibility = min(opacity+(1.0-shadows), 1.0);
-                gl_FragColor = vec4(v_Color.rgb * visibility, v_Color.a);
+                specular=visibility < 1.0 ? vec3(0.0, 0.0, 0.0): specular;// 阴影处没有高光
+                gl_FragColor = vec4((diffuse +ambient +specular) * visibility, v_Color.a);
+                //gl_FragColor = vec4(vec3(specularWeighting), v_Color.a);
+                 //gl_FragColor = vec4(u_ambientColor * visibility, v_Color.a);
+                 gl_FragColor = vec4(v_Color.rgb * visibility, v_Color.a);
             }
           `;
 
         var OFFSCREEN_WIDTH = 2048, OFFSCREEN_HEIGHT = 2048;
-        var LIGHT_X = 0, LIGHT_Y =10, LIGHT_Z = 2; // Position of the light source
+        var LIGHT_X = 0.0, LIGHT_Y =5.0, LIGHT_Z = -2.0; // Position of the light source
 
         function main() {
             // Retrieve <canvas> element
@@ -108,8 +158,15 @@
             var normalProgram = createProgram(gl, VSHADER_SOURCE, FSHADER_SOURCE);
             normalProgram.a_Position = gl.getAttribLocation(normalProgram, 'a_Position');
             normalProgram.a_Color = gl.getAttribLocation(normalProgram, 'a_Color');
+            normalProgram.u_lightPosition = gl.getUniformLocation(normalProgram, 'u_lightPosition');
+            normalProgram.u_viewPosition = gl.getUniformLocation(normalProgram, 'u_viewPosition');
+            normalProgram.a_Normal = gl.getAttribLocation(normalProgram, 'a_Normal');
+            normalProgram.u_lightColor = gl.getUniformLocation(normalProgram, 'u_lightColor');
+            normalProgram.u_ambientColor = gl.getUniformLocation(normalProgram, 'u_ambientColor');
             normalProgram.u_MvpMatrix = gl.getUniformLocation(normalProgram, 'u_MvpMatrix');
             normalProgram.u_MvpMatrixFromLight = gl.getUniformLocation(normalProgram, 'u_MvpMatrixFromLight');
+            normalProgram.u_modelMatrix = gl.getUniformLocation(normalProgram, 'u_modelMatrix');
+            normalProgram.u_NormalMatrix = gl.getUniformLocation(normalProgram, 'u_normalMatrix');
             normalProgram.u_ShadowMap = gl.getUniformLocation(normalProgram, 'u_ShadowMap');
             if (normalProgram.a_Position < 0 || normalProgram.a_Color < 0 || !normalProgram.u_MvpMatrix ||
                 !normalProgram.u_MvpMatrixFromLight || !normalProgram.u_ShadowMap) {
@@ -170,6 +227,11 @@
                 gl.useProgram(normalProgram); // Set the shader for regular drawing
                 gl.uniform1i(normalProgram.u_ShadowMap, 0);  // Pass 0 because gl.TEXTURE0 is enabledする
                 // Draw the cuble and plane ( for regular drawing)
+                gl.uniform3f(normalProgram.u_lightPosition, LIGHT_X, LIGHT_Y, LIGHT_Z);
+                gl.uniform3f(normalProgram.u_viewPosition, 0.0, 7.0, 9.0);
+                gl.uniform3f(normalProgram.u_lightColor, 1.0, 1.0, 1.0);
+                gl.uniform3f(normalProgram.u_ambientColor, 0.2, 0.2, 0.2);
+
                 gl.uniformMatrix4fv(normalProgram.u_MvpMatrixFromLight, false, mvpMatrixFromLight_t.elements);
                 drawCuble(gl, normalProgram, cuble, currentAngle, viewProjMatrix);
                 gl.uniformMatrix4fv(normalProgram.u_MvpMatrixFromLight, false, mvpMatrixFromLight_p.elements);
@@ -185,15 +247,26 @@
         var g_mvpMatrix = new Matrix4();
         function drawCuble(gl, program, cuble, angle, viewProjMatrix) {
             // Set rotate angle to model matrix and draw cuble
+            var g_normalMatrix = new Matrix4();
             g_modelMatrix.setTranslate(-0.5, 2, 0);
             g_modelMatrix.rotate(angle, 0, 1, 0);
             g_modelMatrix.scale(0.5, 0.5, 0.5);
+            gl.uniformMatrix4fv(program.u_modelMatrix, false, g_modelMatrix.elements);
+            g_normalMatrix.setInverseOf(g_modelMatrix);
+            g_normalMatrix.transpose();
+            gl.uniformMatrix4fv(program.u_NormalMatrix, false, g_normalMatrix.elements);
             draw(gl, program, cuble, viewProjMatrix);
         }
 
         function drawPlane(gl, program, plane, viewProjMatrix) {
             // Set rotate angle to model matrix and draw plane
+            var g_normalMatrix = new Matrix4();
             g_modelMatrix.setRotate(-30, 0, 1, 1);
+            g_modelMatrix.scale(2.0, 1.0, 2.0);
+            gl.uniformMatrix4fv(program.u_modelMatrix, false, g_modelMatrix.elements);
+            g_normalMatrix.setInverseOf(g_modelMatrix);
+            g_normalMatrix.transpose();
+            gl.uniformMatrix4fv(program.u_NormalMatrix, false, g_normalMatrix.elements);
             draw(gl, program, plane, viewProjMatrix);
         }
 
@@ -203,7 +276,8 @@
                 initAttributeVariable(gl, program.a_Color, o.colorBuffer);
 
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);
-
+            if (program.a_Normal)
+                initAttributeVariable(gl, program.a_Normal, o.normalBuffer);
             // Calculate the model view project matrix and pass it to u_MvpMatrix
             g_mvpMatrix.set(viewProjMatrix);
             g_mvpMatrix.multiply(g_modelMatrix);
@@ -231,7 +305,12 @@
             var vertices = new Float32Array([
               3.0, -1.7, 2.5, -3.0, -1.7, 2.5, -3.0, -1.7, -2.5, 3.0, -1.7, -2.5    // v0-v1-v2-v3
             ]);
-
+            var normals = new Float32Array([    // Normal
+              0.0, 0.0, 1.0,
+              0.0, 0.0, 1.0,
+              0.0, 0.0, 1.0,
+              0.0, 0.0, 1.0// v0-v1-v2-v3 front
+            ]);
             // Colors
             var colors = new Float32Array([
               1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0
@@ -244,6 +323,7 @@
 
             // Write vertex information to buffer object
             o.vertexBuffer = initArrayBufferForLaterUse(gl, vertices, 3, gl.FLOAT);
+            o.normalBuffer = initArrayBufferForLaterUse(gl, normals, 3, gl.FLOAT);
             o.colorBuffer = initArrayBufferForLaterUse(gl, colors, 3, gl.FLOAT);
             o.indexBuffer = initElementArrayBufferForLaterUse(gl, indices, gl.UNSIGNED_BYTE);
             if (!o.vertexBuffer || !o.colorBuffer || !o.indexBuffer) return null;
@@ -338,24 +418,6 @@
               20, 21, 22, 20, 22, 23     // back
             ]);
 
-
-            // Write the vertex property to buffers (coordinates, colors and normals)
-            //if (!initArrayBuffer(gl, 'a_Position', vertices, 3, gl.FLOAT)) return -1;
-            //if (!initArrayBuffer(gl, 'a_Color', colors, 3, gl.FLOAT)) return -1;
-            //if (!initArrayBuffer(gl, 'a_Normal', normals, 3, gl.FLOAT)) return -1;
-
-            //// Write the indices to the buffer object
-            //var indexBuffer = gl.createBuffer();
-            //if (!indexBuffer) {
-            //    console.log('Failed to create the buffer object');
-            //    return false;
-            //}
-
-            //gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-            //gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
-
-            //return indices.length;
-
             var o = new Object();  // Utilize Object object to return multiple buffer objects together
 
             // Write vertex information to buffer object
@@ -435,7 +497,8 @@
             gl.bindTexture(gl.TEXTURE_2D, texture);
             gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, OFFSCREEN_WIDTH, OFFSCREEN_HEIGHT, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
             // Create a renderbuffer object and Set its size and parameters
             depthBuffer = gl.createRenderbuffer(); // Create a renderbuffer object
             if (!depthBuffer) {
