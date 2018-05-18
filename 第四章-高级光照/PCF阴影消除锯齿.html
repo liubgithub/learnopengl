@@ -9,6 +9,20 @@
     <script src="../lib/cuon-matrix.js"></script>
     <script type="text/javascript">
         // Shadow.js (c) 2012 matsuda and tanaka
+        var VSHADER_SOURCE_LIGHT =
+            `attribute vec4 a_Position;
+            uniform mat4 u_lightmvpMatrix;
+            void main() {
+               gl_Position = u_lightmvpMatrix * a_Position;
+          }`;
+
+        var FSHADER_SOURCE_LIGHT =
+          `#ifdef GL_ES
+            precision mediump float;
+            #endif
+            void main() {
+            gl_FragColor = vec4(1.0);
+        }`;
         // Vertex shader program for generating a shadow map
         var SHADOW_VSHADER_SOURCE =
           `attribute vec4 a_Position;
@@ -107,9 +121,9 @@
               // gl_FragColor = vec4((spotLight + ambient + specular), v_color.a);
 
 
-               float bias = 0.005*tan(acos(cosTheta));// 根据光线与表面的夹角计算偏移量,用于消除马赫带
-               bias = clamp(bias, 1.0/1023.0, 0.01);
-               //float bias = 1.0/1023.0;
+               //float bias = 0.005*tan(acos(cosTheta));// 根据光线与表面的夹角计算偏移量,用于消除马赫带
+               //bias = clamp(bias, 1.0/1023.0, 0.01);
+               float bias = 1.0/1023.0;
                vec3 shadowCoord = (v_PositionFromLight.xyz/v_PositionFromLight.w)/2.0 + 0.5;
                float shadows = 0.0;
                float opacity = 0.7;
@@ -125,14 +139,12 @@
                 float visibility = min(opacity+(1.0-shadows), 1.0);
                 specular=visibility < 1.0 ? vec3(0.0, 0.0, 0.0): specular;// 阴影处没有高光
                 gl_FragColor = vec4((diffuse +ambient +specular) * visibility, v_Color.a);
-                //gl_FragColor = vec4(vec3(specularWeighting), v_Color.a);
-                 //gl_FragColor = vec4(u_ambientColor * visibility, v_Color.a);
-                 gl_FragColor = vec4(v_Color.rgb * visibility, v_Color.a);
+                //gl_FragColor = vec4(v_Color.rgb * visibility, v_Color.a);
             }
           `;
 
         var OFFSCREEN_WIDTH = 2048, OFFSCREEN_HEIGHT = 2048;
-        var LIGHT_X = 0.0, LIGHT_Y =5.0, LIGHT_Z = -2.0; // Position of the light source
+        var LIGHT_X = 0.0, LIGHT_Y =5.0, LIGHT_Z = 2.0; // Position of the light source
 
         function main() {
             // Retrieve <canvas> element
@@ -144,7 +156,9 @@
                 console.log('Failed to get the rendering context for WebGL');
                 return;
             }
-
+            var lightProgram = createProgram(gl, VSHADER_SOURCE_LIGHT, FSHADER_SOURCE_LIGHT);
+            lightProgram.a_Position = gl.getAttribLocation(lightProgram, 'a_Position');
+            lightProgram.u_MvpMatrix = gl.getUniformLocation(lightProgram, 'u_lightmvpMatrix');
             // Initialize shaders for generating a shadow map
             var shadowProgram = createProgram(gl, SHADOW_VSHADER_SOURCE, SHADOW_FSHADER_SOURCE);
             shadowProgram.a_Position = gl.getAttribLocation(shadowProgram, 'a_Position');
@@ -215,9 +229,9 @@
 
                 gl.useProgram(shadowProgram); // Set shaders for generating a shadow map
                 // Draw the cuble and the plane (for generating a shadow map)
-                drawCuble(gl, shadowProgram, cuble, currentAngle, viewProjMatrixFromLight);
+                var g_mvpMatrix =  drawCube(gl, shadowProgram, cuble, currentAngle, viewProjMatrixFromLight);
                 mvpMatrixFromLight_t.set(g_mvpMatrix); // Used later
-                drawPlane(gl, shadowProgram, plane, viewProjMatrixFromLight);
+                g_mvpMatrix=  drawPlane(gl, shadowProgram, plane, viewProjMatrixFromLight);
                 mvpMatrixFromLight_p.set(g_mvpMatrix); // Used later
 
                 gl.bindFramebuffer(gl.FRAMEBUFFER, null);               // Change the drawing destination to color buffer
@@ -233,19 +247,22 @@
                 gl.uniform3f(normalProgram.u_ambientColor, 0.2, 0.2, 0.2);
 
                 gl.uniformMatrix4fv(normalProgram.u_MvpMatrixFromLight, false, mvpMatrixFromLight_t.elements);
-                drawCuble(gl, normalProgram, cuble, currentAngle, viewProjMatrix);
+                drawCube(gl, normalProgram, cuble, currentAngle, viewProjMatrix);
                 gl.uniformMatrix4fv(normalProgram.u_MvpMatrixFromLight, false, mvpMatrixFromLight_p.elements);
                 drawPlane(gl, normalProgram, plane, viewProjMatrix);
-
+                //draw light
+                gl.useProgram(lightProgram);
+                drawLight(gl, lightProgram, cuble, currentAngle, viewProjMatrix);
                 window.requestAnimationFrame(tick, canvas);
             };
             tick();
         }
 
         // Coordinate transformation matrix
-        var g_modelMatrix = new Matrix4();
-        var g_mvpMatrix = new Matrix4();
-        function drawCuble(gl, program, cuble, angle, viewProjMatrix) {
+      
+        function drawCube(gl, program, cuble, angle, viewProjMatrix) {
+            var g_modelMatrix = new Matrix4();
+            var g_mvpMatrix = new Matrix4();
             // Set rotate angle to model matrix and draw cuble
             var g_normalMatrix = new Matrix4();
             g_modelMatrix.setTranslate(-0.5, 2, 0);
@@ -255,11 +272,32 @@
             g_normalMatrix.setInverseOf(g_modelMatrix);
             g_normalMatrix.transpose();
             gl.uniformMatrix4fv(program.u_NormalMatrix, false, g_normalMatrix.elements);
-            draw(gl, program, cuble, viewProjMatrix);
+            g_mvpMatrix.set(viewProjMatrix);
+            g_mvpMatrix.multiply(g_modelMatrix);
+            draw(gl, program, cuble, g_mvpMatrix);
+            return g_mvpMatrix;
+        }
+
+        function drawLight(gl, program, light, angle, viewProjMatrix) {
+            // Set rotate angle to model matrix and draw cuble
+            var g_modelMatrix = new Matrix4();
+            var g_mvpMatrix = new Matrix4();
+            var g_normalMatrix = new Matrix4();
+            LIGHT_X = Math.cos(angle / 180 * Math.PI) * 3.0;
+            LIGHT_Z= Math.sin(angle / 180 * Math.PI) * 3.0;
+            g_modelMatrix.translate(LIGHT_X, LIGHT_Y, LIGHT_Z);
+            //g_modelMatrix.rotate(angle, 0, 1, 0);
+            g_modelMatrix.scale(0.1, 0.1, 0.1);
+            g_mvpMatrix.set(viewProjMatrix);
+            g_mvpMatrix.multiply(g_modelMatrix);
+            draw(gl, program, light, g_mvpMatrix);
+            return g_mvpMatrix;
         }
 
         function drawPlane(gl, program, plane, viewProjMatrix) {
             // Set rotate angle to model matrix and draw plane
+            var g_modelMatrix = new Matrix4();
+            var g_mvpMatrix = new Matrix4();
             var g_normalMatrix = new Matrix4();
             g_modelMatrix.setRotate(-30, 0, 1, 1);
             g_modelMatrix.scale(2.0, 1.0, 2.0);
@@ -267,10 +305,13 @@
             g_normalMatrix.setInverseOf(g_modelMatrix);
             g_normalMatrix.transpose();
             gl.uniformMatrix4fv(program.u_NormalMatrix, false, g_normalMatrix.elements);
-            draw(gl, program, plane, viewProjMatrix);
+            g_mvpMatrix.set(viewProjMatrix);
+            g_mvpMatrix.multiply(g_modelMatrix);
+            draw(gl, program, plane, g_mvpMatrix);
+            return g_mvpMatrix;
         }
 
-        function draw(gl, program, o, viewProjMatrix) {
+        function draw(gl, program, o, mvpMatrix) {
             initAttributeVariable(gl, program.a_Position, o.vertexBuffer);
             if (program.a_Color != undefined) // If a_Color is defined to attribute
                 initAttributeVariable(gl, program.a_Color, o.colorBuffer);
@@ -279,9 +320,9 @@
             if (program.a_Normal)
                 initAttributeVariable(gl, program.a_Normal, o.normalBuffer);
             // Calculate the model view project matrix and pass it to u_MvpMatrix
-            g_mvpMatrix.set(viewProjMatrix);
-            g_mvpMatrix.multiply(g_modelMatrix);
-            gl.uniformMatrix4fv(program.u_MvpMatrix, false, g_mvpMatrix.elements);
+            //g_mvpMatrix.set(viewProjMatrix);
+            //g_mvpMatrix.multiply(g_modelMatrix);
+            gl.uniformMatrix4fv(program.u_MvpMatrix, false, mvpMatrix.elements);
 
             gl.drawElements(gl.TRIANGLES, o.numIndices, gl.UNSIGNED_BYTE, 0);
         }
