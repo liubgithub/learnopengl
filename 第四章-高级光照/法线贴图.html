@@ -28,38 +28,54 @@
         }`;
         //法线贴图的shader
         var VSHADER_SOURCE =
-        ` attribute vec4 a_Position;
+        `
+          attribute vec4 a_Position;
           attribute vec4 a_Normal; // Normal
           attribute vec2 a_TexCoord;
-          attribute vec3 aTangent;
-          attribute vec3 aBitangent;
+          attribute vec4 aTangent;
+          attribute vec4 aBitangent;
 
           uniform mat4 u_MvpMatrix;
-          //uniform mat4 u_normalMatrix;   //transpose(inverse(u_ModelMatrix))这个过程在js里算的
+          uniform mat4 u_normalMatrix;   //transpose(inverse(u_ModelMatrix))这个过程在js里算的
           uniform mat4 u_ModelMatrix;    // Model matrix
 
           uniform vec3 lightPos;
           uniform vec3 viewPos;
 
           struct VS_OUT {
-               vec4 v_FragPos;
-               vec2 v_TextCoords;
+               vec3 v_FragPos;
+               vec2 v_TexCoords;
                vec3 TangentLightPos;
                vec3 TangentViewPos;
                vec3 TangentFragPos;
         } vs_out;
+        //0, 1, 2,
+        //3, 4, 5,
+        //6, 7, 8
+        mat3 transpose_mat3(mat3 mat) {
+           float t = mat[0][1];
+           mat[0][1]= mat[1][0];
+           mat[1][0]=t;
+           t = mat[0][2];
+           mat[0][2]= mat[2][0];
+           mat[2][0]=t;
+           t = mat[1][2];
+           mat[1][2]= mat[2][1];
+           mat[2][1]=t;
+           return mat;
+        }
 
         void main() {
-               vs_out.v_FragPos = vec3(u_ModelMatrix * vec4(aPos, 1.0));
+               vs_out.v_FragPos = vec3(u_ModelMatrix * a_Position);
                vs_out.v_TexCoords = a_TexCoord;
 
-               mat3 normalMatrix = transpose(inverse(mat3(u_ModelMatrix)));
-               vec3 T = normalize(normalMatrix * aTangent);
-               vec3 N = normalize(normalMatrix * a_Normal);
+               mat4 normalMatrix = u_normalMatrix;
+               vec3 T = normalize(vec3(normalMatrix * aTangent));
+               vec3 N = normalize(vec3(normalMatrix * a_Normal));
                T = normalize(T -dot(T, N) * N);
                vec3 B = cross(N, T);
 
-               mat3 TBN = transpose(mat3(T, B, N));
+               mat3 TBN = transpose_mat3(mat3(T, B, N));
                vs_out.TangentLightPos = TBN * lightPos;
                vs_out.TangentViewPos  = TBN * viewPos;
                vs_out.TangentFragPos  = TBN * vs_out.v_FragPos;
@@ -68,10 +84,12 @@
         }
         `;
         var FSHADER_SOURCE =
-          `#ifdef GL_ES
+          ` #ifdef GL_ES
+              precision mediump float;
+            #endif
             struct VS_OUT {
-               vec4 v_FragPos;
-               vec2 v_TextCoords;
+               vec3 v_FragPos;
+               vec2 v_TexCoords;
                vec3 TangentLightPos;
                vec3 TangentViewPos;
                vec3 TangentFragPos;
@@ -80,8 +98,30 @@
              uniform sampler2D diffuseMap;
              uniform sampler2D normalMap;
 
-             uniform vec3 lightPos;
-             uniform vec3 viewPos;
+             void main()
+            {
+                // obtain normal from normal map in range [0,1]
+                vec3 normal = texture2D(normalMap, fs_in.v_TexCoords).rgb;
+                // transform normal vector to range [-1,1]
+                normal = normalize(normal * 2.0 -1.0);  // this normal is in tangent space
+
+                // get diffuse color
+                vec3 color = texture2D(diffuseMap, fs_in.v_TexCoords).rgb;
+                // ambient
+                vec3 ambient = 0.1 * color;
+                // diffuse
+                vec3 lightDir = normalize(fs_in.TangentLightPos -fs_in.TangentFragPos);
+                float diff = max(dot(lightDir, normal), 0.0);
+                vec3 diffuse = diff * color;
+                // specular
+                vec3 viewDir = normalize(fs_in.TangentViewPos -fs_in.TangentFragPos);
+                vec3 reflectDir = reflect(-lightDir, normal);
+                vec3 halfwayDir = normalize(lightDir +viewDir);
+                float spec = pow(max(dot(normal, halfwayDir), 0.0), 32.0);
+
+                vec3 specular = vec3(0.2) * spec;
+                gl_FragColor = vec4(ambient +diffuse +specular, 1.0);
+            }
           `;
         // Fragment shader program
         var _FSHADER_SOURCE =
@@ -164,18 +204,20 @@
             // Get storage locations of attribute and uniform variables in program object for texture drawing
             //planeProgram.u_objectColor = gl.getUniformLocation(gl.program, 'u_objectColor');
             planeProgram.u_lightColor = gl.getUniformLocation(planeProgram, 'u_lightColor');
-            planeProgram.u_lightPos = gl.getUniformLocation(planeProgram, 'u_lightPos');
-            planeProgram.u_viewPos = gl.getUniformLocation(planeProgram, 'u_viewPos');
-
+            planeProgram.u_lightPos = gl.getUniformLocation(planeProgram, 'lightPos');
+            planeProgram.u_viewPos = gl.getUniformLocation(planeProgram, 'viewPos');
 
             planeProgram.a_Position = gl.getAttribLocation(planeProgram, 'a_Position');
             planeProgram.a_Normal = gl.getAttribLocation(planeProgram, 'a_Normal');
             planeProgram.a_TexCoord = gl.getAttribLocation(planeProgram, 'a_TexCoord');
+            planeProgram.aTangent = gl.getAttribLocation(planeProgram, 'aTangent');
+            planeProgram.aBitangent = gl.getAttribLocation(planeProgram, 'aBitangent');
 
             planeProgram.u_MvpMatrix = gl.getUniformLocation(planeProgram, 'u_MvpMatrix');
             planeProgram.u_ModelMatrix = gl.getUniformLocation(planeProgram, 'u_ModelMatrix');
             planeProgram.u_NormalMatrix = gl.getUniformLocation(planeProgram, 'u_normalMatrix');
-            planeProgram.u_Sampler = gl.getUniformLocation(planeProgram, 'u_Sampler');
+            planeProgram.diffuseMap = gl.getUniformLocation(planeProgram, 'diffuseMap');
+            planeProgram.normalMap = gl.getUniformLocation(planeProgram, 'normalMap');
 
 
             // Set the vertex information
@@ -188,13 +230,12 @@
             }
             //var windowObject = initWindowVertexBuffers(gl);
             // Set texture
-            var texture = initTextures(gl, planeProgram, '../images/brickwall.jpg',0);
-            if (!texture) {
+            var diffuseMap = initTextures(gl, planeProgram, '../images/brickwall.jpg',planeProgram.diffuseMap, 0);
+            var normalMap = initTextures(gl, planeProgram, '../images/brickwall_normal.jpg', planeProgram.normalMap, 1);
+            if (!diffuseMap || !normalMap) {
                 console.log('Failed to intialize the texture.');
                 return;
             }
-
-            var texture_normal = initTextures(gl, planeProgram, '../images/brickwall_normal.jpg',1);
 
             // Set the clear color and enable the depth test
             gl.enable(gl.DEPTH_TEST);
@@ -217,7 +258,7 @@
                 // Draw the light source
                 drawLight(gl, lightProgram, cubeLight, 2.0, currentAngle, viewProjMatrix);
                 // Draw a cube in single color
-                drawPlane(gl, planeProgram,planeObject, texture, 0.0, 0.0, viewProjMatrix);
+                drawPlane(gl, planeProgram, planeObject, diffuseMap, normalMap, 0.0, 0.0, viewProjMatrix);
                 requestAnimationFrame(tick, canvas);
             };
             tick();
@@ -287,8 +328,12 @@
             return o;
         }
 
-        //初始化草的相关数据
+        //初始化相关数据
         function initPlaneVertexBuffers(gl) {
+            var pos1 = new Vector3([-1.0, 1.0, 0.0]);
+            var pos2 = new Vector3([-1.0, -1.0, 0.0]);
+            var pos3 = new Vector3([1.0, 1.0, 0.0]);
+            var pos4 = new Vector3([1.0, -1.0, 0.0]);
             var verticesCoords = new Float32Array([
               // Vertex coordinates, texture coordinate
               -1.0, 1.0, 0.0,
@@ -303,23 +348,67 @@
               1.0, 1.0,
               1.0, 0.0
             ]);
-
-            var normals = new Float32Array([   // Normal
-               0.0, 0.0, 1.0,
-               0.0, 0.0, 1.0,
-               0.0, 0.0, 1.0,
-               0.0, 0.0, 1.0
-            ]);
+            var nm = [0.0, 0.0, 1.0];
+            //var normals = new Float32Array([   // Normal
+            //   0.0, 0.0, 1.0,
+            //   0.0, 0.0, 1.0,
+            //   0.0, 0.0, 1.0,
+            //   0.0, 0.0, 1.0
+            //]);
 
             var indices = new Uint8Array([        // Indices of the vertices
                 0, 1, 2, 1, 2, 3   // front
             ]);
             var n = indices.length; // The number of vertices
 
+            var tangent1 = new Vector3();
+            var bitangent1 = new Vector3();
+            var tangent2 = new Vector3();
+            var bitangent2 = new Vector3();
+
+            var edge1 = pos2.sub(pos1);
+            var edge2 = pos3.sub(pos1);
+            var deltaUV1 = [texCoords[2] - texCoords[0], texCoords[3] - texCoords[1]];
+            var deltaUV2 = [texCoords[4] - texCoords[0], texCoords[5] - texCoords[1]];
+
+            var f = 1.0 / (deltaUV1[0] * deltaUV2[1] - deltaUV2[0] * deltaUV1[1]);
+            tangent1.elements[0] = f * (deltaUV2[1] * edge1.elements[0] - deltaUV1[1] * edge2.elements[0]);
+            tangent1.elements[1] = f * (deltaUV2[1] * edge1.elements[1] - deltaUV1[1] * edge2.elements[1]);
+            tangent1.elements[2] = f * (deltaUV2[1] * edge1.elements[2] - deltaUV1[1] * edge2.elements[2]);
+
+            bitangent1.elements[0] = f * (-deltaUV2[0] * edge1.elements[0] + deltaUV1[0] * edge2.elements[0]);
+            bitangent1.elements[1] = f * (-deltaUV2[0] * edge1.elements[1] + deltaUV1[0] * edge2.elements[1]);
+            bitangent1.elements[2] = f * (-deltaUV2[0] * edge1.elements[2] + deltaUV1[0] * edge2.elements[2]);
+
+            edge1 = pos3.sub(pos1);
+            edge2 = pos4.sub(pos1);
+            var deltaUV1 = [texCoords[4] - texCoords[0], texCoords[5] - texCoords[1]];
+            var deltaUV2 = [texCoords[6] - texCoords[0], texCoords[7] - texCoords[1]];
+
+            f = 1.0 / (deltaUV1[0] * deltaUV2[1] - deltaUV2[0] * deltaUV1[1]);
+            tangent2.elements[0] = f * (deltaUV2[1] * edge1.elements[0] - deltaUV1[1] * edge2.elements[0]);
+            tangent2.elements[1] = f * (deltaUV2[1] * edge1.elements[1] - deltaUV1[1] * edge2.elements[1]);
+            tangent2.elements[2] = f * (deltaUV2[1] * edge1.elements[2] - deltaUV1[1] * edge2.elements[2]);
+
+            bitangent2.elements[0] = f * (-deltaUV2[0] * edge1.elements[0] + deltaUV1[0] * edge2.elements[0]);
+            bitangent2.elements[1] = f * (-deltaUV2[0] * edge1.elements[1] + deltaUV1[0] * edge2.elements[1]);
+            bitangent2.elements[2] = f * (-deltaUV2[0] * edge1.elements[2] + deltaUV1[0] * edge2.elements[2]);
+
+            var quadVertices = new Float32Array([
+                pos1.elements[0], pos1.elements[1], pos1.elements[2], nm[0], nm[1], nm[2], texCoords[0], texCoords[1],tangent1.elements[0], tangent1.elements[1], tangent1.elements[2], bitangent1.elements[0], bitangent1.elements[1], bitangent1.elements[2],
+                pos2.elements[0], pos2.elements[1], pos2.elements[2], nm[0], nm[1], nm[2], texCoords[2], texCoords[3],tangent1.elements[0], tangent1.elements[1], tangent1.elements[2], bitangent1.elements[0], bitangent1.elements[1], bitangent1.elements[2],
+                pos3.elements[0], pos3.elements[1], pos3.elements[2], nm[0], nm[1], nm[2], texCoords[4], texCoords[5],tangent1.elements[0], tangent1.elements[1], tangent1.elements[2], bitangent1.elements[0], bitangent1.elements[1], bitangent1.elements[2],
+
+                pos1.elements[0], pos1.elements[1], pos1.elements[2], nm[0], nm[1], nm[2], texCoords[0], texCoords[1], tangent2.elements[0], tangent2.elements[1], tangent2.elements[2], bitangent2.elements[0], bitangent2.elements[1], bitangent2.elements[2],
+                pos3.elements[0], pos3.elements[1], pos3.elements[2], nm[0], nm[1], nm[2], texCoords[4], texCoords[5], tangent2.elements[0], tangent2.elements[1], tangent2.elements[2], bitangent2.elements[0], bitangent2.elements[1], bitangent2.elements[2],
+                pos4.elements[0], pos4.elements[1], pos4.elements[2], nm[0], nm[1], nm[2], texCoords[6], texCoords[7], tangent2.elements[0], tangent2.elements[1], tangent2.elements[2], bitangent2.elements[0], bitangent2.elements[1], bitangent2.elements[2]
+            ]);
+
             var o = {};
-            o.vertexBuffer = initArrayBufferForLaterUse(gl, verticesCoords, 3, gl.FLOAT);
-            o.texCoordBuffer = initArrayBufferForLaterUse(gl, texCoords, 2, gl.FLOAT);
-            o.normalBuffer = initArrayBufferForLaterUse(gl, normals, 3, gl.FLOAT);
+            //o.vertexBuffer = initArrayBufferForLaterUse(gl, verticesCoords, 3, gl.FLOAT);
+            //o.texCoordBuffer = initArrayBufferForLaterUse(gl, texCoords, 2, gl.FLOAT);
+            //o.normalBuffer = initArrayBufferForLaterUse(gl, normals, 3, gl.FLOAT);
+            o.quadVerticesBuffer = initArrayBufferForLaterUse(gl, quadVertices, 14, gl.FLOAT);
             o.indexBuffer = initElementArrayBufferForLaterUse(gl, indices, gl.UNSIGNED_BYTE);
             o.numIndices = indices.length;
 
@@ -330,7 +419,7 @@
             return o;
         }
 
-        function initTextures(gl, program, url,index) {
+        function initTextures(gl, program, url,location,index) {
             var texture = gl.createTexture();   // Create a texture object
             if (!texture) {
                 console.log('Failed to create the texture object');
@@ -355,7 +444,7 @@
 
                 // Pass the texure unit 0 to u_Sampler
                 gl.useProgram(program);
-                gl.uniform1i(program.u_Sampler, 0);
+                gl.uniform1i(location, 0);
 
                 gl.bindTexture(gl.TEXTURE_2D, null); // Unbind texture
             };
@@ -370,35 +459,45 @@
             gl.useProgram(program);   // Tell that this program object is used
 
             // Assign the buffer objects and enable the assignment
-            initAttributeVariable(gl, program.a_Position, o.vertexBuffer); // Vertex coordinates
+            var vertexBuffer = o.vertexBuffer;
+            var fsize = vertexBuffer.FSIZE;
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+            initAttributeVariable(gl, program.a_Position, 3, vertexBuffer.num * fsize, 0 * fsize); // Vertex coordinates
             //initAttributeVariable(gl, program.a_Normal, o.normalBuffer);   // Normal
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);  // Bind indices
 
             drawLightCube(gl, program, o, x, angle, viewProjMatrix);   // Draw
         }
 
-        function drawPlane(gl, program, o, texture, x, angle, viewProjMatrix) {
+        function drawPlane(gl, program, o, texture,texture_normal, x, angle, viewProjMatrix) {
             gl.useProgram(program);   // Tell that this program object is used
 
             gl.uniform3f(program.u_lightColor, 1.0, 1.0, 1.0);
             gl.uniform3f(program.u_lightPos, light_Pos.elements[0], light_Pos.elements[1], light_Pos.elements[2]);
             gl.uniform3f(program.u_viewPos, cameraPos[0], cameraPos[1], cameraPos[2]);
             // Assign the buffer objects and enable the assignment
-            initAttributeVariable(gl, program.a_Position, o.vertexBuffer); // Vertex coordinates
-            initAttributeVariable(gl, program.a_TexCoord, o.texCoordBuffer);// Texture coordinates
-            initAttributeVariable(gl, program.a_Normal, o.normalBuffer);   // Normal
+            var quadVerticesBuffer = o.quadVerticesBuffer;
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadVerticesBuffer);
+            var fsize = quadVerticesBuffer.FSIZE;
+            initAttributeVariable(gl, program.a_Position, 3, quadVerticesBuffer.num * fsize, 0 * fsize); // Vertex coordinates
+            initAttributeVariable(gl, program.a_TexCoord, 3, quadVerticesBuffer.num * fsize, 3 * fsize);// Normal
+            initAttributeVariable(gl, program.a_Normal, 2, quadVerticesBuffer.num * fsize, 6 * fsize);   // Texture coordinates
+            initAttributeVariable(gl, program.aTangent, 3, quadVerticesBuffer.num * fsize, 8 * fsize);   // tangent
+            initAttributeVariable(gl, program.aBitangent, 3, quadVerticesBuffer.num * fsize, 11 * fsize);   // bitangent
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);  // Bind indices
 
             gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, texture_normal);
             drawQuad(gl, program, o, x, angle, viewProjMatrix);
         }
 
 
         // Assign the buffer objects and enable the assignment
-        function initAttributeVariable(gl, a_attribute, buffer) {
-            gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-            gl.vertexAttribPointer(a_attribute, buffer.num, buffer.type, false, 0, 0);
+        function initAttributeVariable(gl, a_attribute,num,stride, offset) {
+            //gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+            gl.vertexAttribPointer(a_attribute, num, gl.FLOAT, false, stride, offset);
             gl.enableVertexAttribArray(a_attribute);
         }
 
@@ -461,6 +560,7 @@
             // Keep the information necessary to assign to the attribute variable later
             buffer.num = num;
             buffer.type = type;
+            buffer.FSIZE = data.BYTES_PER_ELEMENT;
 
             return buffer;
         }
