@@ -84,6 +84,7 @@
           'void main() {\n' +
           'vec4 texColor = texture2D(u_Sampler, v_TexCoord);\n' +
           '  gl_FragColor = texColor;\n' +
+          //'  gl_FragColor = vec4(vec3(v_TexCoord,1.0),1.0);\n' + //纹理坐标测试
           '}\n';
 
         function main() {
@@ -246,22 +247,39 @@
 
         //初始化草的相关数据
         function initWindowVertexBuffers(gl) {
-            var verticesCoords = new Float32Array([
+            var _verticesCoords = new Float32Array([
               // Vertex coordinates, texture coordinate
               -1.0, 1.0, 0.0,
               -1.0, -1.0, 0.0,
                1.0, 1.0, 0.0,
                1.0, -1.0, 0.0
             ]);
-            var texCoords =  new Float32Array([
+            var verticesCoords = new Float32Array([
+             // Vertex coordinates, texture coordinate
+             -1.0, 1.0, 0.0,
+             -1.0, -1.0, 0.0,
+              1.0, -1.0, 0.0,
+              1.0, 1.0, 0.0
+            ]);
+            var _texCoords =  new Float32Array([
               // Vertex coordinates, texture coordinate
               0.0, 1.0,
               0.0, 0.0,
               1.0, 1.0,
               1.0, 0.0
             ]);
-            var indices = new Uint8Array([        // Indices of the vertices
+            var texCoords = new Float32Array([
+             // Vertex coordinates, texture coordinate
+             0.0, 1.0,
+             0.0, 0.0,
+             1.0, 0.0,
+             1.0, 1.0
+            ]);
+            var _indices = new Uint8Array([        // Indices of the vertices
                 0, 1, 2, 1, 2, 3   // front
+            ]);
+            var indices = new Uint8Array([        // Indices of the vertices
+                0, 1, 2, 0, 2, 3   // front
             ]);
             var n = indices.length; // The number of vertices
 

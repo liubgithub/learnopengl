@@ -42,16 +42,15 @@
           uniform vec3 lightPos;
           uniform vec3 viewPos;
 
-          struct VS_OUT {
-               vec3 v_FragPos;
-               vec2 v_TexCoords;
-               vec3 TangentLightPos;
-               vec3 TangentViewPos;
-               vec3 TangentFragPos;
-        } vs_out;
+          varying vec3 v_FragPos;
+          varying vec2 v_TexCoords;
+          varying vec3 TangentLightPos;
+          varying vec3 TangentViewPos;
+          varying vec3 TangentFragPos;
         //0, 1, 2,
         //3, 4, 5,
         //6, 7, 8
+
         mat3 transpose_mat3(mat3 mat) {
            float t = mat[0][1];
            mat[0][1]= mat[1][0];
@@ -66,8 +65,11 @@
         }
 
         void main() {
-               vs_out.v_FragPos = vec3(u_ModelMatrix * a_Position);
-               vs_out.v_TexCoords = a_TexCoord;
+               vec4 test = aBitangent*vec4(1.0);
+               //vs_out.v_FragPos = vec3(u_ModelMatrix * a_Position);
+               //vs_out.v_TexCoords = a_TexCoord;
+               v_FragPos = vec3(u_ModelMatrix * a_Position);
+               v_TexCoords = a_TexCoord;
 
                mat4 normalMatrix = u_normalMatrix;
                vec3 T = normalize(vec3(normalMatrix * aTangent));
@@ -76,9 +78,12 @@
                vec3 B = cross(N, T);
 
                mat3 TBN = transpose_mat3(mat3(T, B, N));
-               vs_out.TangentLightPos = TBN * lightPos;
-               vs_out.TangentViewPos  = TBN * viewPos;
-               vs_out.TangentFragPos  = TBN * vs_out.v_FragPos;
+               //vs_out.TangentLightPos = TBN * lightPos;
+               //vs_out.TangentViewPos  = TBN * viewPos;
+               //vs_out.TangentFragPos  = TBN * vs_out.v_FragPos;
+               TangentLightPos = TBN * lightPos;
+               TangentViewPos  = TBN * viewPos;
+               TangentFragPos  = TBN * v_FragPos;
 
                gl_Position = u_MvpMatrix * a_Position;
         }
@@ -87,40 +92,48 @@
           ` #ifdef GL_ES
               precision mediump float;
             #endif
-            struct VS_OUT {
-               vec3 v_FragPos;
-               vec2 v_TexCoords;
-               vec3 TangentLightPos;
-               vec3 TangentViewPos;
-               vec3 TangentFragPos;
-             } fs_in;
+            varying vec3 v_FragPos;
+            varying vec2 v_TexCoords;
+            varying vec3 TangentLightPos;
+            varying vec3 TangentViewPos;
+            varying vec3 TangentFragPos;
+            //struct VS_OUT {
+            //   vec3 v_FragPos;
+            //   vec2 v_TexCoords;
+            //   vec3 TangentLightPos;
+            //   vec3 TangentViewPos;
+            //   vec3 TangentFragPos;
+            // } fs_in;
 
              uniform sampler2D diffuseMap;
              uniform sampler2D normalMap;
+             uniform vec3 u_lightColor;
 
              void main()
             {
                 // obtain normal from normal map in range [0,1]
-                vec3 normal = texture2D(normalMap, fs_in.v_TexCoords).rgb;
+                vec3 normal = texture2D(normalMap, v_TexCoords).rgb;
                 // transform normal vector to range [-1,1]
                 normal = normalize(normal * 2.0 -1.0);  // this normal is in tangent space
 
                 // get diffuse color
-                vec3 color = texture2D(diffuseMap, fs_in.v_TexCoords).rgb;
+                vec3 color = texture2D(diffuseMap, v_TexCoords).rgb;
                 // ambient
-                vec3 ambient = 0.1 * color;
+                vec3 ambient = u_lightColor * color;
                 // diffuse
-                vec3 lightDir = normalize(fs_in.TangentLightPos -fs_in.TangentFragPos);
+                vec3 lightDir = normalize(TangentLightPos -TangentFragPos);
                 float diff = max(dot(lightDir, normal), 0.0);
                 vec3 diffuse = diff * color;
                 // specular
-                vec3 viewDir = normalize(fs_in.TangentViewPos -fs_in.TangentFragPos);
+                vec3 viewDir = normalize(TangentViewPos -TangentFragPos);
                 vec3 reflectDir = reflect(-lightDir, normal);
                 vec3 halfwayDir = normalize(lightDir +viewDir);
-                float spec = pow(max(dot(normal, halfwayDir), 0.0), 32.0);
+                //float spec = pow(max(dot(normal, halfwayDir), 0.0), 8.0);
+                float spec = pow(max(dot(normal, reflectDir), 0.0), 1.0);
 
-                vec3 specular = vec3(0.2) * spec;
+                vec3 specular = u_lightColor * spec;
                 gl_FragColor = vec4(ambient +diffuse +specular, 1.0);
+                //gl_FragColor = vec4(diff,diff,diff, 1.0);
             }
           `;
         // Fragment shader program
@@ -172,8 +185,10 @@
         var FSHADER_SOURCE_LIGHT =
           `#ifdef GL_ES
           precision mediump float;
+          uniform vec3 u_lightColor;
           #endif
           void main() {
+          vec4 color = vec4(u_lightColor, 1.0);
             gl_FragColor = vec4(1.0);
         }`;
 
@@ -199,10 +214,10 @@
 
             // Get storage locations of attribute and uniform variables in program object for single color drawing
             lightProgram.a_Position = gl.getAttribLocation(lightProgram, 'a_Position');
+            lightProgram.u_lightColor = gl.getUniformLocation(lightProgram, 'u_lightColor');
             lightProgram.u_lightmvpMatrix = gl.getUniformLocation(lightProgram, 'u_lightmvpMatrix');
 
             // Get storage locations of attribute and uniform variables in program object for texture drawing
-            //planeProgram.u_objectColor = gl.getUniformLocation(gl.program, 'u_objectColor');
             planeProgram.u_lightColor = gl.getUniformLocation(planeProgram, 'u_lightColor');
             planeProgram.u_lightPos = gl.getUniformLocation(planeProgram, 'lightPos');
             planeProgram.u_viewPos = gl.getUniformLocation(planeProgram, 'viewPos');
@@ -231,7 +246,7 @@
             //var windowObject = initWindowVertexBuffers(gl);
             // Set texture
             var diffuseMap = initTextures(gl, planeProgram, '../images/brickwall.jpg',planeProgram.diffuseMap, 0);
-            var normalMap = initTextures(gl, planeProgram, '../images/brickwall_normal.jpg', planeProgram.normalMap, 1);
+            var normalMap = initTextures(gl, planeProgram, '../images/normal_mapping.png', planeProgram.normalMap, 1);
             if (!diffuseMap || !normalMap) {
                 console.log('Failed to intialize the texture.');
                 return;
@@ -258,7 +273,7 @@
                 // Draw the light source
                 drawLight(gl, lightProgram, cubeLight, 2.0, currentAngle, viewProjMatrix);
                 // Draw a cube in single color
-                drawPlane(gl, planeProgram, planeObject, diffuseMap, normalMap, 0.0, 0.0, viewProjMatrix);
+                drawPlane(gl, planeProgram, planeObject, diffuseMap, normalMap, 0.0, 20.0, viewProjMatrix);
                 requestAnimationFrame(tick, canvas);
             };
             tick();
@@ -328,12 +343,40 @@
             return o;
         }
 
+        function testQuad(gl) {
+            var verticesCoords = new Float32Array([
+             // Vertex coordinates, texture coordinate
+             -1.0, 1.0, 0.0,
+             -1.0, -1.0, 0.0,
+              1.0, -1.0, 0.0, 
+              1.0, 1.0, 0.0
+            ]);
+
+            var indices = new Uint8Array([        // Indices of the vertices
+                0, 1, 2, 0, 2, 3   // front
+            ]);
+            var n = indices.length; // The number of vertices
+
+            var o = {};
+            o.vertexBuffer = initArrayBufferForLaterUse(gl, verticesCoords, 3, gl.FLOAT);
+            //o.texCoordBuffer = initArrayBufferForLaterUse(gl, texCoords, 2, gl.FLOAT);
+            //o.normalBuffer = initArrayBufferForLaterUse(gl, normals, 3, gl.FLOAT);
+            o.indexBuffer = initElementArrayBufferForLaterUse(gl, indices, gl.UNSIGNED_BYTE);
+            o.numIndices = indices.length;
+
+            // Unbind the buffer object
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+            return o;
+        }
+
         //初始化相关数据
         function initPlaneVertexBuffers(gl) {
             var pos1 = new Vector3([-1.0, 1.0, 0.0]);
             var pos2 = new Vector3([-1.0, -1.0, 0.0]);
-            var pos3 = new Vector3([1.0, 1.0, 0.0]);
-            var pos4 = new Vector3([1.0, -1.0, 0.0]);
+            var pos3 = new Vector3([1.0, -1.0, 0.0]);
+            var pos4 = new Vector3([1.0, 1.0, 0.0]);
             var verticesCoords = new Float32Array([
               // Vertex coordinates, texture coordinate
               -1.0, 1.0, 0.0,
@@ -342,11 +385,11 @@
                1.0, -1.0, 0.0
             ]);
             var texCoords = new Float32Array([
-              // Vertex coordinates, texture coordinate
+              //texture coordinate
               0.0, 1.0,
               0.0, 0.0,
-              1.0, 1.0,
-              1.0, 0.0
+              1.0, 0.0,
+              1.0, 1.0
             ]);
             var nm = [0.0, 0.0, 1.0];
             //var normals = new Float32Array([   // Normal
@@ -357,7 +400,7 @@
             //]);
 
             var indices = new Uint8Array([        // Indices of the vertices
-                0, 1, 2, 1, 2, 3   // front
+                0, 1, 2, 0, 2, 3   // front
             ]);
             var n = indices.length; // The number of vertices
 
@@ -398,9 +441,6 @@
                 pos1.elements[0], pos1.elements[1], pos1.elements[2], nm[0], nm[1], nm[2], texCoords[0], texCoords[1],tangent1.elements[0], tangent1.elements[1], tangent1.elements[2], bitangent1.elements[0], bitangent1.elements[1], bitangent1.elements[2],
                 pos2.elements[0], pos2.elements[1], pos2.elements[2], nm[0], nm[1], nm[2], texCoords[2], texCoords[3],tangent1.elements[0], tangent1.elements[1], tangent1.elements[2], bitangent1.elements[0], bitangent1.elements[1], bitangent1.elements[2],
                 pos3.elements[0], pos3.elements[1], pos3.elements[2], nm[0], nm[1], nm[2], texCoords[4], texCoords[5],tangent1.elements[0], tangent1.elements[1], tangent1.elements[2], bitangent1.elements[0], bitangent1.elements[1], bitangent1.elements[2],
-
-                pos1.elements[0], pos1.elements[1], pos1.elements[2], nm[0], nm[1], nm[2], texCoords[0], texCoords[1], tangent2.elements[0], tangent2.elements[1], tangent2.elements[2], bitangent2.elements[0], bitangent2.elements[1], bitangent2.elements[2],
-                pos3.elements[0], pos3.elements[1], pos3.elements[2], nm[0], nm[1], nm[2], texCoords[4], texCoords[5], tangent2.elements[0], tangent2.elements[1], tangent2.elements[2], bitangent2.elements[0], bitangent2.elements[1], bitangent2.elements[2],
                 pos4.elements[0], pos4.elements[1], pos4.elements[2], nm[0], nm[1], nm[2], texCoords[6], texCoords[7], tangent2.elements[0], tangent2.elements[1], tangent2.elements[2], bitangent2.elements[0], bitangent2.elements[1], bitangent2.elements[2]
             ]);
 
@@ -437,14 +477,16 @@
                 gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);  // Flip the image Y coordinate
                 gl.activeTexture(gl.TEXTURE0+index);
                 gl.bindTexture(gl.TEXTURE_2D, texture);
-                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
                 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
 
                 // Pass the texure unit 0 to u_Sampler
                 gl.useProgram(program);
-                gl.uniform1i(location, 0);
+                gl.uniform1i(location, index);
 
                 gl.bindTexture(gl.TEXTURE_2D, null); // Unbind texture
             };
@@ -463,6 +505,7 @@
             var fsize = vertexBuffer.FSIZE;
             gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
             initAttributeVariable(gl, program.a_Position, 3, vertexBuffer.num * fsize, 0 * fsize); // Vertex coordinates
+            gl.uniform3f(program.u_lightColor, 1.0, 1.0, 1.0);
             //initAttributeVariable(gl, program.a_Normal, o.normalBuffer);   // Normal
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);  // Bind indices
 
@@ -480,12 +523,14 @@
             gl.bindBuffer(gl.ARRAY_BUFFER, quadVerticesBuffer);
             var fsize = quadVerticesBuffer.FSIZE;
             initAttributeVariable(gl, program.a_Position, 3, quadVerticesBuffer.num * fsize, 0 * fsize); // Vertex coordinates
-            initAttributeVariable(gl, program.a_TexCoord, 3, quadVerticesBuffer.num * fsize, 3 * fsize);// Normal
-            initAttributeVariable(gl, program.a_Normal, 2, quadVerticesBuffer.num * fsize, 6 * fsize);   // Texture coordinates
+            initAttributeVariable(gl, program.a_Normal, 3, quadVerticesBuffer.num * fsize, 3 * fsize);// Normal
+            initAttributeVariable(gl, program.a_TexCoord, 2, quadVerticesBuffer.num * fsize, 6 * fsize);   // Texture coordinates
             initAttributeVariable(gl, program.aTangent, 3, quadVerticesBuffer.num * fsize, 8 * fsize);   // tangent
             initAttributeVariable(gl, program.aBitangent, 3, quadVerticesBuffer.num * fsize, 11 * fsize);   // bitangent
+            //gl.bindBuffer(gl.ARRAY_BUFFER, o.texCoordBuffer);
+            //gl.vertexAttribPointer(program.a_TexCoord, 2, gl.FLOAT, false, 0, 0);
+            //gl.enableVertexAttribArray(program.a_TexCoord);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);  // Bind indices
-
             gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_2D, texture);
             gl.activeTexture(gl.TEXTURE1);
@@ -506,10 +551,10 @@
             var g_mvpMatrix = new Matrix4();
             var g_normalMatrix = new Matrix4();
             // Calculate a model matrix
-            g_modelMatrix.setTranslate(0, 0.0, 0.0);
+            g_modelMatrix.setTranslate(0.0, 0.0, 0.0);
             g_modelMatrix.rotate(90.0, 1.0, 0.0, 0.0);
             g_modelMatrix.rotate(angle, 0.0, 1.0, 0.0);
-            g_modelMatrix.scale(5, 5, 1);
+            g_modelMatrix.scale(4,4, 1);
 
             // Calculate model view projection matrix and pass it to u_MvpMatrix
             g_mvpMatrix.set(viewProjMatrix);
@@ -597,8 +642,5 @@
     <canvas id="webgl" width="512" height="512">
         Please use a browser that supports "canvas"
     </canvas>
-    <p>关于blinn-Phong模型为什么用半程向量(half vector)与表面法向量相乘来代替光线向量与视线向量相乘的理解:
-    <p>1、光线向量和视线向量点乘可能<=0,是效果失真。</p>
-    <p>2、当法线向量和半程向量重合也就是夹角为0时，视线方向向量也正好与反射光线向量重合，证明他们是线性相关，可通过乘一个常量值来拉伸这个线性关系</p>
-</body>
+ </body>
 </html>
