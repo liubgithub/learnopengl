@@ -189,6 +189,11 @@ function main() {
         return;
     }
 
+    
+    console.log('Failed to get the rendering context for WebGL');
+    return;
+}
+
     // 初始化阴影着色器,创建对应program
     var shadowProgram=createProgramInfo(gl,['svs','sfs']);
 

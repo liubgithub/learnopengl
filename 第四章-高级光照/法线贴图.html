@@ -66,8 +66,6 @@
 
         void main() {
                vec4 test = aBitangent*vec4(1.0);
-               //vs_out.v_FragPos = vec3(u_ModelMatrix * a_Position);
-               //vs_out.v_TexCoords = a_TexCoord;
                v_FragPos = vec3(u_ModelMatrix * a_Position);
                v_TexCoords = a_TexCoord;
 
@@ -78,9 +76,6 @@
                vec3 B = cross(N, T);
 
                mat3 TBN = transpose_mat3(mat3(T, B, N));
-               //vs_out.TangentLightPos = TBN * lightPos;
-               //vs_out.TangentViewPos  = TBN * viewPos;
-               //vs_out.TangentFragPos  = TBN * vs_out.v_FragPos;
                TangentLightPos = TBN * lightPos;
                TangentViewPos  = TBN * viewPos;
                TangentFragPos  = TBN * v_FragPos;
@@ -97,13 +92,6 @@
             varying vec3 TangentLightPos;
             varying vec3 TangentViewPos;
             varying vec3 TangentFragPos;
-            //struct VS_OUT {
-            //   vec3 v_FragPos;
-            //   vec2 v_TexCoords;
-            //   vec3 TangentLightPos;
-            //   vec3 TangentViewPos;
-            //   vec3 TangentFragPos;
-            // } fs_in;
 
              uniform sampler2D diffuseMap;
              uniform sampler2D normalMap;
@@ -119,7 +107,8 @@
                 // get diffuse color
                 vec3 color = texture2D(diffuseMap, v_TexCoords).rgb;
                 // ambient
-                vec3 ambient = u_lightColor * color;
+                float ambient_length = 0.5;
+                vec3 ambient = u_lightColor * color*ambient_length;
                 // diffuse
                 vec3 lightDir = normalize(TangentLightPos -TangentFragPos);
                 float diff = max(dot(lightDir, normal), 0.0);
@@ -129,9 +118,9 @@
                 vec3 reflectDir = reflect(-lightDir, normal);
                 vec3 halfwayDir = normalize(lightDir +viewDir);
                 float spec = pow(max(dot(normal, halfwayDir), 0.0), 8.0);
-                //float spec = pow(max(dot(normal, reflectDir), 0.0), 1.0);
-
-                vec3 specular = u_lightColor * spec;
+                //float spec = pow(max(dot(normal, reflectDir), 0.0), 8.0);
+                float specular_length = 1.0;
+                vec3 specular = u_lightColor * spec*specular_length;
                 gl_FragColor = vec4(ambient +diffuse +specular, 1.0);
                 //gl_FragColor = vec4(diff,diff,diff, 1.0);
             }
@@ -185,10 +174,8 @@
         var FSHADER_SOURCE_LIGHT =
           `#ifdef GL_ES
           precision mediump float;
-          uniform vec3 u_lightColor;
           #endif
           void main() {
-          vec4 color = vec4(u_lightColor, 1.0);
             gl_FragColor = vec4(1.0);
         }`;
 
@@ -273,7 +260,7 @@
                 // Draw the light source
                 drawLight(gl, lightProgram, cubeLight, 2.0, currentAngle, viewProjMatrix);
                 // Draw a cube in single color
-                drawPlane(gl, planeProgram, planeObject, diffuseMap, normalMap, 0.0, 20.0, viewProjMatrix);
+                drawPlane(gl, planeProgram, planeObject, diffuseMap, normalMap, 0.0, currentAngle, viewProjMatrix);
                 requestAnimationFrame(tick, canvas);
             };
             tick();
@@ -362,7 +349,7 @@
             //o.texCoordBuffer = initArrayBufferForLaterUse(gl, texCoords, 2, gl.FLOAT);
             //o.normalBuffer = initArrayBufferForLaterUse(gl, normals, 3, gl.FLOAT);
             o.indexBuffer = initElementArrayBufferForLaterUse(gl, indices, gl.UNSIGNED_BYTE);
-            o.numIndices = indices.length;
+            o.numIndices = indices.length;0
 
             // Unbind the buffer object
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
@@ -505,7 +492,6 @@
             var fsize = vertexBuffer.FSIZE;
             gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
             initAttributeVariable(gl, program.a_Position, 3, vertexBuffer.num * fsize, 0 * fsize); // Vertex coordinates
-            gl.uniform3f(program.u_lightColor, 1.0, 1.0, 1.0);
             //initAttributeVariable(gl, program.a_Normal, o.normalBuffer);   // Normal
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);  // Bind indices
 
@@ -515,7 +501,9 @@
         function drawPlane(gl, program, o, texture,texture_normal, x, angle, viewProjMatrix) {
             gl.useProgram(program);   // Tell that this program object is used
 
-            gl.uniform3f(program.u_lightColor, 1.0, 1.0, 1.0);
+            gl.uniform3f(program.u_lightColor, 0.5, 0.5, 0.5);
+            light_Pos.elements[0] = Math.cos(angle / 180 * Math.PI) * 3.0;
+            light_Pos.elements[2] = Math.sin(angle / 180 * Math.PI) * 3.0;
             gl.uniform3f(program.u_lightPos, light_Pos.elements[0], light_Pos.elements[1], light_Pos.elements[2]);
             gl.uniform3f(program.u_viewPos, cameraPos[0], cameraPos[1], cameraPos[2]);
             // Assign the buffer objects and enable the assignment
@@ -552,7 +540,7 @@
             var g_normalMatrix = new Matrix4();
             // Calculate a model matrix
             g_modelMatrix.setTranslate(0.0, 0.0, 0.0);
-            g_modelMatrix.rotate(-20.0, 1.0, 0.0, 0.0);
+            g_modelMatrix.rotate(-60.0, 1.0, 0.0, 0.0);
             //g_modelMatrix.rotate(angle, 0.0, 1.0, 0.0);
             g_modelMatrix.scale(4,4, 1);
 
@@ -642,5 +630,6 @@
     <canvas id="webgl" width="512" height="512">
         Please use a browser that supports "canvas"
     </canvas>
+    <p>1、刚开始将C++的代码都翻译成了javascript，但是效果出不来，隔了很久，想到可能是灯光太亮，调了小灯光强度，环境光和镜面光都做了微调，效果出来了，证明光照强度会对法线贴图影响很大。</p>
  </body>
 </html>

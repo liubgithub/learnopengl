@@ -72,14 +72,13 @@
             }
             
             // Initialize shaders for generating a shadow map
-            var shadowProgram = createProgram(gl, SHADOW_VSHADER_SOURCE, SHADOW_FSHADER_SOURCE);
+            var shadowProgram = createProgram(gl, SHADOW_VSHADER_DEPTH, SHADOW_FSHADER_DEPTH);
             shadowProgram.a_Position = gl.getAttribLocation(shadowProgram, 'a_Position');
             shadowProgram.u_MvpMatrix = gl.getUniformLocation(shadowProgram, 'u_MvpMatrix');
             if (shadowProgram.a_Position < 0 || !shadowProgram.u_MvpMatrix) {
                 console.log('Failed to get the storage location of attribute or uniform variable from shadowProgram');
                 return;
             }
-            
             // Initialize shaders for regular drawing
             var normalProgram = createProgram(gl, VSHADER_SOURCE, FSHADER_SOURCE);
             normalProgram.a_Position = gl.getAttribLocation(normalProgram, 'a_Position');
@@ -107,6 +106,7 @@
                 console.log('Failed to initialize frame buffer object');
                 return;
             }
+           
             gl.activeTexture(gl.TEXTURE0); // Set a texture object to the texture unit
             gl.bindTexture(gl.TEXTURE_2D, fbo.texture);
 
