@@ -13,78 +13,107 @@
         var VSHADER_SOURCE =
           `attribute vec4 a_Position;
            attribute vec4 a_Normal;        // Normal
-           varying vec4 v_FragPos;
-           varying vec3 v_Normal;
+           //varying vec4 v_FragPos;
+           //varying vec3 v_Normal;
            attribute vec2 a_TexCoord;
-           varying vec2 v_TextCoords;
+           //varying vec2 v_TextCoords;
            uniform mat4 u_MvpMatrix;
            uniform mat4 u_normalMatrix;   //transpose(inverse(u_ModelMatrix))这个过程在js里算的
            uniform mat4 u_ModelMatrix;    // Model matrix
+
+           varying vec3 FragPos;
+           varying vec3 Normal;
+           varying vec2 TexCoords;
            void main() {
-            v_FragPos = u_ModelMatrix * a_Position;
-            v_Normal =vec3(-1.0) * normalize(vec3(u_normalMatrix * a_Normal));
-            v_TextCoords = a_TexCoord;
-             gl_Position = u_MvpMatrix * a_Position;
+               FragPos = vec3(u_ModelMatrix * a_Position);
+               TexCoords = a_TexCoord;
+               Normal = normalize(vec3(u_normalMatrix * a_Normal));
+               gl_Position = u_MvpMatrix * a_Position;
          }`;
         // Fragment shader program
         var FSHADER_SOURCE =
           `#ifdef GL_ES
           precision mediump float;
           #endif
-          varying vec3 v_Normal;
-          varying vec4 v_FragPos;
-          varying vec2 v_TextCoords;
+          varying vec3 Normal;
+          varying vec3 FragPos;
+          varying vec2 TexCoords;
 
-          uniform vec3 u_lightPos;
-          uniform vec3 u_viewPos;
-          uniform vec3 u_lightColor;
-          //uniform vec3 u_objectColor;
+          struct Light {
+             vec3 Position;
+             vec3 Color;
+        };
 
-          uniform sampler2D u_Sampler;
-          void main() {
-            //ambient 环境光
-            float ambientStrength = 0.05;
-            vec3 ambient = ambientStrength * u_lightColor*texture2D(u_Sampler, v_TextCoords).rgb;
-          //diffuse 漫反射
-            vec3 norm = normalize(v_Normal);
-            vec3 lightDir = vec3(normalize(u_lightPos - vec3(v_FragPos)));
-            float diff = max(dot(norm, lightDir), 0.0);
-            vec3 diffuse = diff * u_lightColor*texture2D(u_Sampler, v_TextCoords).rgb;
-          // specular 镜面反射
-            float specularStrength = 0.6;
-            vec3 viewDir = vec3(normalize(u_viewPos - vec3(v_FragPos)));
-            //vec3 reflectDir = reflect(-lightDir, norm);
-            vec3 halfwayDir = normalize(lightDir+viewDir);
-            float spec = pow(max(dot(norm, halfwayDir), 0.0), 32.0);
-            //float spec = dot(viewDir, reflectDir);
-            vec3 specular = specularStrength *u_lightColor*spec;
+        uniform Light lights[4];
+        uniform sampler2D diffuseTexture;
+        //uniform vec3 viewPos;
 
-            //vec3 result = (ambient + diffuse + specular) * u_objectColor;
-            vec3 result = ambient +diffuse +specular;
-            //vec3 result = vec3(v_FragPos) * u_objectColor;
-            gl_FragColor = vec4(result, 1.0);
-          }`;
+        void main() {
+           vec3 color = texture2D(diffuseTexture, TexCoords).rgb;
+           vec3 normal = normalize(Normal);
+           //ambient
+           vec3 ambient = 0.0*color;
+           //lighting
+           vec3 lighting = vec3(0.0);
+           for(int i = 0; i<4; i++) {
+               //diffuse
+               vec3 lightDir = normalize(lights[i].Position - FragPos);
+               float diff = max(dot(lightDir, normal), 0.0);
+               vec3 diffuse = lights[i].Color * diff * color;
+               vec3 result = diffuse;
+               float distance = length(FragPos -lights[i].Position);
+               result = result* (1.0/(distance * distance));
+               lighting  = lighting + result;
+            }
+            //gl_FragColor = vec4(ambient + lighting , 1.0);
+            gl_FragColor = vec4(1.0,1.0,1.0, 1.0);
+        }`;
 
-        var VSHADER_SOURCE_LIGHT =
+        var VSHADER_SOURCE_HRD =
             `attribute vec4 a_Position;
-            uniform mat4 u_lightmvpMatrix;
+            attribute vec2 aTexCoords;
+
+            varying vec2 TexCoords;
             void main() {
-               gl_Position = u_lightmvpMatrix * a_Position;
+               TexCoords = aTexCoords;
+               gl_Position = a_Position;
           }`;
 
-        var FSHADER_SOURCE_LIGHT =
+        var FSHADER_SOURCE_HRD =
           `#ifdef GL_ES
           precision mediump float;
           #endif
+          varying vec2 TexCoords;
+
+          uniform sampler2D hdrBuffer;
+          uniform float exposure;
           void main() {
-            gl_FragColor = vec4(1.0);
+           const float gamma = 2.2;
+           vec3 hdrColor = texture2D(hdrBuffer, TexCoords).rgb;
+
+           vec3 result = hdrColor / (hdrColor +vec3(1.0));
+           result = pow(result, vec3(1.0 / gamma));
+           gl_FragColor = vec4(result, 1.0);
+
+           // vec3 result = pow(hrdColor, vec3(1.0 / gamma));
+           //gl_FragColor = vec4(result, 1.0);
         }`;
 
         var cameraPos, light_Pos;
+        var lightPositions = [
+               [0.00, 0.00, 49.50], [-1.40, -1.90, 9.00], [0.00, -1.80, 4.00], [0.80, -1.70, 6.00]
+        ];
+
+        var lightColors = [
+            [200.00, 200.00, 200.00], [0.10, 0.00, 0.00], [0.00, 0.00, 0.20], [0.00, 0.10, 0.00]
+        ];
+        var canvas;
+        var OFFSCREEN_WIDTH, OFFSCREEN_HEIGHT;
         function main() {
             // Retrieve <canvas> element
-            var canvas = document.getElementById('webgl');
-
+            canvas = document.getElementById('webgl');
+            OFFSCREEN_WIDTH = canvas.width;
+            OFFSCREEN_HEIGHT = canvas.height;
             // Get the rendering context for WebGL
             var gl = getWebGLContext(canvas);
             if (!gl) {
@@ -93,32 +122,40 @@
             }
 
             // Initialize shaders
-            var lightProgram = createProgram(gl, VSHADER_SOURCE_LIGHT, FSHADER_SOURCE_LIGHT);
-            var hdrProgram = createProgram(gl, VSHADER_SOURCE, FSHADER_SOURCE);
-            if (!lightProgram || !hdrProgram) {
+            var hdrProgram = createProgram(gl, VSHADER_SOURCE_HRD, FSHADER_SOURCE_HRD);
+            var sceneProgram = createProgram(gl, VSHADER_SOURCE, FSHADER_SOURCE);
+            if (!sceneProgram || !hdrProgram) {
                 console.log('Failed to intialize shaders.');
                 return;
             }
 
             // Get storage locations of attribute and uniform variables in program object for single color drawing
-            lightProgram.a_Position = gl.getAttribLocation(lightProgram, 'a_Position');
-            lightProgram.u_lightmvpMatrix = gl.getUniformLocation(lightProgram, 'u_lightmvpMatrix');
+            hdrProgram.a_Position = gl.getAttribLocation(hdrProgram, 'a_Position');
+            hdrProgram.aTexCoords = gl.getUniformLocation(hdrProgram, 'aTexCoords');
+            hdrProgram.exposure = gl.getUniformLocation(hdrProgram, 'exposure');
 
             // Get storage locations of attribute and uniform variables in program object for texture drawing
-            //planeProgram.u_objectColor = gl.getUniformLocation(gl.program, 'u_objectColor');
-            planeProgram.u_lightColor = gl.getUniformLocation(planeProgram, 'u_lightColor');
-            planeProgram.u_lightPos = gl.getUniformLocation(planeProgram, 'u_lightPos');
-            planeProgram.u_viewPos = gl.getUniformLocation(planeProgram, 'u_viewPos');
+            //sceneProgram.u_objectColor = gl.getUniformLocation(gl.program, 'u_objectColor');
+            //sceneProgram.u_lightColor = gl.getUniformLocation(sceneProgram, 'u_lightColor');
+            //sceneProgram.u_lightPos = gl.getUniformLocation(sceneProgram, 'u_lightPos');
+            //sceneProgram.u_viewPos = gl.getUniformLocation(sceneProgram, 'u_viewPos');
+            sceneProgram.lights = [];
+            for (var i = 0; i < 4; i++) {
+                sceneProgram.lights[i] = {};
+                sceneProgram.lights[i].Position = gl.getUniformLocation(sceneProgram, 'lights[' + i + '].Position');
+                sceneProgram.lights[i].Color = gl.getUniformLocation(sceneProgram, 'lights[' + i + '].Color');
+            }
 
 
-            planeProgram.a_Position = gl.getAttribLocation(planeProgram, 'a_Position');
-            planeProgram.a_Normal = gl.getAttribLocation(planeProgram, 'a_Normal');
-            planeProgram.a_TexCoord = gl.getAttribLocation(planeProgram, 'a_TexCoord');
+            sceneProgram.a_Position = gl.getAttribLocation(sceneProgram, 'a_Position');
+            sceneProgram.a_Normal = gl.getAttribLocation(sceneProgram, 'a_Normal');
+            sceneProgram.a_TexCoord = gl.getAttribLocation(sceneProgram, 'a_TexCoord');
 
-            planeProgram.u_MvpMatrix = gl.getUniformLocation(planeProgram, 'u_MvpMatrix');
-            planeProgram.u_ModelMatrix = gl.getUniformLocation(planeProgram, 'u_ModelMatrix');
-            planeProgram.u_NormalMatrix = gl.getUniformLocation(planeProgram, 'u_normalMatrix');
-            planeProgram.u_Sampler = gl.getUniformLocation(planeProgram, 'u_Sampler');
+            sceneProgram.u_MvpMatrix = gl.getUniformLocation(sceneProgram, 'u_MvpMatrix');
+            sceneProgram.u_ModelMatrix = gl.getUniformLocation(sceneProgram, 'u_ModelMatrix');
+            sceneProgram.u_NormalMatrix = gl.getUniformLocation(sceneProgram, 'u_normalMatrix');
+            sceneProgram.diffuseTexture = gl.getUniformLocation(sceneProgram, 'diffuseTexture');
+
 
 
             // Set the vertex information
@@ -131,12 +168,17 @@
             //}
             //var windowObject = initWindowVertexBuffers(gl);
             var VAO = initVertexBuffers(gl);
+            var quadVAO = initPlaneVertexBuffers(gl);
             // Set texture
-            var texture = initTextures(gl, planeProgram, '../images/wood.png');
-            if (!texture) {
+            var woodTexture = initTextures(gl, sceneProgram, '../images/wood.png');
+            if (!woodTexture) {
                 console.log('Failed to intialize the texture.');
                 return;
             }
+
+            var hdrFBO = initFramebufferObject(gl);
+            //gl.activeTexture(gl.TEXTURE0); // Set a texture object to the texture unit
+            //gl.bindTexture(gl.TEXTURE_2D, hdrFBO.texture);
 
 
             // Set the clear color and enable the depth test
@@ -146,8 +188,7 @@
             gl.clearColor(0.0, 0.0, 0.0, 1.0);
 
             // Calculate the view projection matrix
-            cameraPos = [0.0, 5.0, 10.0];
-            light_Pos = new Vector3([-2.0, 2.0, -2.0]);
+            cameraPos = [0.0, 8.0, 10.0];
             var viewProjMatrix = new Matrix4();
             viewProjMatrix.setPerspective(45.0, canvas.width / canvas.height, 1.0, 100.0);
             viewProjMatrix.lookAt(cameraPos[0], cameraPos[1], cameraPos[2], 0, 0, 0, 0, 1, 0);
@@ -156,14 +197,43 @@
             var currentAngle = 0.0; // Current rotation angle (degrees)
             var tick = function () {
                 currentAngle = animate(currentAngle);  // Update current rotation angle
+                //gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
+                //// Draw the light source
+                //drawLight(gl, lightProgram, cubeLight, 2.0, currentAngle, viewProjMatrix);
+                //// Draw a cube in single color
+                //drawPlane(gl, planeProgram,planeObject, texture, 0.0, 0.0, viewProjMatrix);
+
+                gl.bindFramebuffer(gl.FRAMEBUFFER, hdrFBO);
                 gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
-                // Draw the light source
-                drawLight(gl, lightProgram, cubeLight, 2.0, currentAngle, viewProjMatrix);
-                // Draw a cube in single color
-                drawPlane(gl, planeProgram,planeObject, texture, 0.0, 0.0, viewProjMatrix);
+                gl.useProgram(sceneProgram);
+                gl.activeTexture(gl.TEXTURE0); // Set a texture object to the texture unit
+                gl.bindTexture(gl.TEXTURE_2D, woodTexture);
+                drawScene(gl, sceneProgram, VAO, 0.0, 0.0, viewProjMatrix);
+
+
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+                gl.useProgram(hdrProgram);
+                gl.activeTexture(gl.TEXTURE0); // Set a texture object to the texture unit
+                gl.bindTexture(gl.TEXTURE_2D, hdrFBO.texture);
+                gl.uniform1f(hdrProgram.exposure, 1.0);
+                
+                renderQuad(gl, hdrProgram,quadVAO);
                 requestAnimationFrame(tick, canvas);
             };
             tick();
+        }
+
+        function renderQuad(gl,program,o) {
+            var dataBuffer = o.vertexBuffer;
+            gl.bindBuffer(gl.ARRAY_BUFFER, dataBuffer);
+            var fsize = dataBuffer.FSIZE;
+            // Assign the buffer objects and enable the assignment
+            initAttributeVariable(gl, program.a_Position, 3, dataBuffer.num * fsize, 0 * fsize);
+            initAttributeVariable(gl, program.aTexCoords, 2, dataBuffer.num * fsize, 3 * fsize);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);  // Bind indices
+
+            gl.drawElements(gl.TRIANGLES, o.numIndices, o.indexBuffer.type, 0);   // Draw
         }
 
         function initVertexBuffers(gl) {
@@ -199,13 +269,13 @@
             -1.0, -1.0,  1.0, -1.0,  0.0,  0.0, 0.0, 0.0, // bottom-right
             -1.0,  1.0,  1.0, -1.0,  0.0,  0.0, 1.0, 0.0, // top-right
             // right ace
-             1.0,  1.0,  1.0,  1.0,  0.0,  0.0, 1.0, 0.0, // top-let
+             1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, // top-let
              1.0, -1.0, -1.0,  1.0,  0.0,  0.0, 0.0, 1.0, // bottom-right
              1.0,  1.0, -1.0,  1.0,  0.0,  0.0, 1.0, 1.0, // top-right         
              1.0, -1.0, -1.0,  1.0,  0.0,  0.0, 0.0, 1.0, // bottom-right
              1.0,  1.0,  1.0,  1.0,  0.0,  0.0, 1.0, 0.0, // top-let
              1.0, -1.0,  1.0,  1.0,  0.0,  0.0, 0.0, 0.0, // bottom-let     
-            // bottom ace
+             // bottom ace
             -1.0, -1.0, -1.0,  0.0, -1.0,  0.0, 0.0, 1.0, // top-right
              1.0, -1.0, -1.0,  0.0, -1.0,  0.0, 1.0, 1.0, // top-let
              1.0, -1.0,  1.0,  0.0, -1.0,  0.0, 1.0, 0.0, // bottom-let
@@ -251,11 +321,11 @@
             var o = new Object(); // Utilize Object to to return multiple buffer objects together
 
             // Write vertex information to buffer object
-            o.vertexBuffer = initArrayBufferForLaterUse(gl, vertices, 8, gl.FLOAT);
+            o.dataBuffer = initArrayBufferForLaterUse(gl, vertices, 8, gl.FLOAT);
             //o.normalBuffer = initArrayBufferForLaterUse(gl, normals, 3, gl.FLOAT);
             //o.texCoordBuffer = initArrayBufferForLaterUse(gl, texCoords, 2, gl.FLOAT);
             o.indexBuffer = initElementArrayBufferForLaterUse(gl, indices, gl.UNSIGNED_BYTE);
-            if (!o.vertexBuffer  || !o.indexBuffer) return null;
+            if (!o.dataBuffer || !o.indexBuffer) return null;
 
             o.numIndices = indices.length;
 
@@ -270,10 +340,10 @@
         function initPlaneVertexBuffers(gl) {
             var verticesCoords = new Float32Array([
               // Vertex coordinates, texture coordinate
-              -1.0, 1.0, 0.0,
-              -1.0, -1.0, 0.0,
-               1.0, 1.0, 0.0,
-               1.0, -1.0, 0.0
+            -1.0,  1.0, 0.0, 0.0, 1.0,
+            -1.0, -1.0, 0.0, 0.0, 0.0,
+              1.0,  1.0, 0.0, 1.0, 1.0,
+              1.0, -1.0, 0.0, 1.0, 0.0
             ]);
             var texCoords = new Float32Array([
               // Vertex coordinates, texture coordinate
@@ -296,9 +366,9 @@
             var n = indices.length; // The number of vertices
 
             var o = {};
-            o.vertexBuffer = initArrayBufferForLaterUse(gl, verticesCoords, 3, gl.FLOAT);
-            o.texCoordBuffer = initArrayBufferForLaterUse(gl, texCoords, 2, gl.FLOAT);
-            o.normalBuffer = initArrayBufferForLaterUse(gl, normals, 3, gl.FLOAT);
+            o.vertexBuffer = initArrayBufferForLaterUse(gl, verticesCoords, 5, gl.FLOAT);
+            //o.texCoordBuffer = initArrayBufferForLaterUse(gl, texCoords, 2, gl.FLOAT);
+            //o.normalBuffer = initArrayBufferForLaterUse(gl, normals, 3, gl.FLOAT);
             o.indexBuffer = initElementArrayBufferForLaterUse(gl, indices, gl.UNSIGNED_BYTE);
             o.numIndices = indices.length;
 
@@ -307,6 +377,66 @@
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 
             return o;
+        }
+
+        function initFramebufferObject(gl) {
+            var framebuffer, texture, depthBuffer;
+
+            // Define the error handling function
+            var error = function () {
+                if (framebuffer) gl.deleteFramebuffer(framebuffer);
+                if (texture) gl.deleteTexture(texture);
+                if (depthBuffer) gl.deleteRenderbuffer(depthBuffer);
+                return null;
+            }
+
+            // Create a framebuffer object (FBO)
+            framebuffer = gl.createFramebuffer();
+            if (!framebuffer) {
+                console.log('Failed to create frame buffer object');
+                return error();
+            }
+
+            // Create a texture object and set its size and parameters
+            texture = gl.createTexture(); // Create a texture object
+            if (!texture) {
+                console.log('Failed to create texture object');
+                return error();
+            }
+            
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, OFFSCREEN_WIDTH, OFFSCREEN_HEIGHT, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+
+            // Create a renderbuffer object and Set its size and parameters
+            depthBuffer = gl.createRenderbuffer(); // Create a renderbuffer object
+            if (!depthBuffer) {
+                console.log('Failed to create renderbuffer object');
+                return error();
+            }
+            gl.bindRenderbuffer(gl.RENDERBUFFER, depthBuffer);
+            gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, OFFSCREEN_WIDTH, OFFSCREEN_HEIGHT);
+
+            // Attach the texture and the renderbuffer object to the FBO
+            gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+            gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depthBuffer);
+
+            // Check if FBO is configured correctly
+            var e = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+            if (gl.FRAMEBUFFER_COMPLETE !== e) {
+                console.log('Frame buffer object is incomplete: ' + e.toString());
+                return error();
+            }
+
+            framebuffer.texture = texture; // keep the required object
+
+            // Unbind the buffer object
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.bindTexture(gl.TEXTURE_2D, null);
+            gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+
+            return framebuffer;
         }
 
         function initTextures(gl, program, url) {
@@ -345,15 +475,23 @@
             return texture;
         }
 
-        function drawLight(gl, program, o, x, angle, viewProjMatrix) {
+        function drawScene(gl, program, o, x, angle, viewProjMatrix) {
             gl.useProgram(program);   // Tell that this program object is used
-
+            var dataBuffer = o.dataBuffer;
+            gl.bindBuffer(gl.ARRAY_BUFFER, dataBuffer);
+            var fsize = dataBuffer.FSIZE;
             // Assign the buffer objects and enable the assignment
-            initAttributeVariable(gl, program.a_Position, o.vertexBuffer); // Vertex coordinates
-            //initAttributeVariable(gl, program.a_Normal, o.normalBuffer);   // Normal
+            initAttributeVariable(gl, program.a_Position, 3, dataBuffer.num * fsize, 0 * fsize); // Vertex coordinates
+            initAttributeVariable(gl, program.a_Normal, 3, dataBuffer.num * fsize, 3 * fsize);// Normal
+            initAttributeVariable(gl, program.a_TexCoord, 2, dataBuffer.num * fsize, 6 * fsize);   // Texture coordinates
+            //给灯光赋值
+            for (var i = 0; i < 4; i++) {
+                gl.uniform3f(program.lights[i].Position, lightPositions[i][0], lightPositions[i][1], lightPositions[i][2]);
+                gl.uniform3f(program.lights[i].Color, lightColors[i][0], lightColors[i][1], lightColors[i][2]);
+            }
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);  // Bind indices
 
-            drawLightCube(gl, program, o, x, angle, viewProjMatrix);   // Draw
+            drawSceneCube(gl, program, o, x, angle, viewProjMatrix);   // Draw
         }
 
         function drawPlane(gl, program, o, texture, x, angle, viewProjMatrix) {
@@ -375,18 +513,18 @@
 
 
         // Assign the buffer objects and enable the assignment
-        function initAttributeVariable(gl, a_attribute, buffer) {
-            gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-            gl.vertexAttribPointer(a_attribute, buffer.num, buffer.type, false, 0, 0);
+        function initAttributeVariable(gl, a_attribute, num,stride, offset) {
+            gl.vertexAttribPointer(a_attribute, num, gl.FLOAT, false, stride, offset);
             gl.enableVertexAttribArray(a_attribute);
         }
+
 
         function drawQuad(gl, program, o, x, angle, viewProjMatrix) {
             var g_modelMatrix = new Matrix4();
             var g_mvpMatrix = new Matrix4();
             var g_normalMatrix = new Matrix4();
             // Calculate a model matrix
-            g_modelMatrix.setTranslate(0, 0.0, 0.0);
+            g_modelMatrix.setTranslate(0.0, 0.0, 0.0);
             g_modelMatrix.rotate(90.0, 1.0, 0.0, 0.0);
             g_modelMatrix.rotate(angle, 0.0, 1.0, 0.0);
             g_modelMatrix.scale(5, 5, 1);
@@ -405,7 +543,7 @@
         }
 
 
-        function drawLightCube(gl, program, o, x, angle, viewProjMatrix) {
+        function drawSceneCube(gl, program, o, x, angle, viewProjMatrix) {
             // Coordinate transformation matrix
             var g_modelMatrix = new Matrix4();
             var g_mvpMatrix = new Matrix4();
@@ -413,19 +551,28 @@
             // Calculate a model matrix
             //light_Pos.elements[0] = Math.cos(angle / 180 * Math.PI) * 3.0;
            //light_Pos.elements[2] = Math.sin(angle / 180 * Math.PI) * 3.0;
-            g_modelMatrix.translate(light_Pos.elements[0], light_Pos.elements[1], light_Pos.elements[2]);
+            //g_modelMatrix.translate(light_Pos.elements[0], light_Pos.elements[1], light_Pos.elements[2]);
             //g_modelMatrix.setTranslate(x, 0.0, 0.0);
-            g_modelMatrix.rotate(20.0, 1.0, 0.0, 0.0);
+            //g_modelMatrix.rotate(20.0, 1.0, 0.0, 0.0);
             //g_modelMatrix.rotate(angle, 0.0, 1.0, 0.0);
-            g_modelMatrix.scale(0.1, 0.1, 0.1);
+            //g_modelMatrix.scale(0.1, 0.1, 0.1);
 
             // Calculate model view projection matrix and pass it to u_MvpMatrix
             g_mvpMatrix.set(viewProjMatrix);
+            g_modelMatrix.translate(0.0, 0.0, 25.0);
+            g_modelMatrix.scale(2.5, 2.5, 27.5);
+
+            g_normalMatrix.setInverseOf(g_modelMatrix);
+            g_normalMatrix.transpose();
+
             g_mvpMatrix.multiply(g_modelMatrix);
-            gl.uniformMatrix4fv(program.u_lightmvpMatrix, false, g_mvpMatrix.elements);
+            gl.uniformMatrix4fv(program.u_NormalMatrix, false, g_normalMatrix.elements);
+            gl.uniformMatrix4fv(program.u_ModelMatrix, false, g_modelMatrix.elements);
+            gl.uniformMatrix4fv(program.u_MvpMatrix, false, g_mvpMatrix.elements);
 
             gl.drawElements(gl.TRIANGLES, o.numIndices, o.indexBuffer.type, 0);   // Draw
         }
+
 
         function initArrayBufferForLaterUse(gl, data, num, type) {
             var buffer = gl.createBuffer();   // Create a buffer object
@@ -440,6 +587,7 @@
             // Keep the information necessary to assign to the attribute variable later
             buffer.num = num;
             buffer.type = type;
+            buffer.FSIZE = data.BYTES_PER_ELEMENT;
 
             return buffer;
         }
@@ -457,6 +605,7 @@
 
             return buffer;
         }
+
 
         var ANGLE_STEP = 30;   // The increments of rotation angle (degrees)
 
