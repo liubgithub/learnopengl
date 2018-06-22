@@ -189,11 +189,6 @@ function main() {
         return;
     }
 
-    
-    console.log('Failed to get the rendering context for WebGL');
-    return;
-}
-
     // 初始化阴影着色器,创建对应program
     var shadowProgram=createProgramInfo(gl,['svs','sfs']);
 
@@ -226,7 +221,7 @@ function main() {
 
     var viewProjMatrixFromLight = new Matrix4(); // 光源处观察的视图投影矩阵(阴影着色器)
     viewProjMatrixFromLight.setPerspective(90, OFFSCREEN_WIDTH / OFFSCREEN_HEIGHT, 1.0, 100.0);
-    viewProjMatrixFromLight.lookAt(...LIGHT_POS, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+    viewProjMatrixFromLight.lookAt(LIGHT_POS, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
 
     var viewProjMatrix = new Matrix4(); // 当前视点观测的视图投影矩阵(正常着色器)
     var mvpMatrixFromLight_s = new Matrix4(); // 从光源处观察圆球的mvp矩阵(正常着色器)

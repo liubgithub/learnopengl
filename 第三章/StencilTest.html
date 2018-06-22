@@ -92,7 +92,7 @@
             gl.enable(gl.DEPTH_TEST);
             gl.depthFunc(gl.LESS);
             gl.enable(gl.STENCIL_TEST);
-            gl.stencilFunc(gl.NOTEQUAL, 1, 1);
+            //gl.stencilFunc(gl.NOTEQUAL, 1, 1);
             gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
             //gl.clearColor(0.0, 0.0, 0.0, 1.0);
 
@@ -117,18 +117,18 @@
                 gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
                 // Draw a cube with texture
 
-                gl.stencilFunc(gl.ALWAYS, 1, 1);
                 gl.stencilMask(1);
+                gl.stencilFunc(gl.ALWAYS, 1, 1);
                 drawCubeObject(gl, ObjectProgram, cube, textureCube, 0.0, currentAngle,1.0, viewProjMatrix);
 
-                gl.stencilFunc(gl.NOTEQUAL, 1, 1);
-                gl.stencilMask(0);
-                gl.disable(gl.DEPTH_TEST);
                 gl.useProgram(singleColorProgram);
+                gl.stencilMask(0);
+                gl.stencilFunc(gl.NOTEQUAL, 1, 1);
+                gl.disable(gl.DEPTH_TEST);
                 drawCubeObject(gl, singleColorProgram, cube, textureCube, 0.0, currentAngle, 1.1, viewProjMatrix);
                 gl.bindBuffer(gl.ARRAY_BUFFER, null);
-                gl.stencilMask(1);
                 gl.enable(gl.DEPTH_TEST);
+                gl.stencilMask(1);
                 requestAnimationFrame(tick, canvas);
             };
             tick();
@@ -404,7 +404,7 @@
             // Update the current rotation angle (adjusted by the elapsed time)
             var newAngle = angle + (ANGLE_STEP * elapsed) / 1000.0;
             return newAngle % 360;
-        }
+    }
     </script>
 </head>
 <body onload="main()">
