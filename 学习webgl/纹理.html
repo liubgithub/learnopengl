@@ -1,0 +1,115 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>你好三角形</title>
+    <script src="../lib/webgl-utils.js"></script>
+    <script src="../lib/webgl-debug.js"></script>
+    <script src="../lib/cuon-utils.js"></script>
+    <script type="text/javascript">
+       //頂點着色器
+        var VSHADER_SOURCE =
+          `attribute vec4 a_Position;
+           attribute vec2 a_TexCoord;
+           varying vec2 v_TexCoord;
+           void main() {
+             gl_Position = a_Position;
+             v_TexCoord = a_TexCoord;
+           }`;
+
+        // 片元着色器
+        var FSHADER_SOURCE =
+          `precision mediump float;
+           varying vec2 v_TexCoord;
+           uniform sampler2D u_Sampler;
+           void main() {
+             //利用texture2D方法，根据纹理坐标来进行采样
+             gl_FragColor =texture2D(u_Sampler, v_TexCoord);
+           }`;
+
+        function main(){
+           var canvas = document.getElementById('webgl');
+           var gl = getWebGLContext(canvas);//拿到webglcontext,主要有這幾種 "webgl", "experimental-webgl", "webkit-3d", "moz-webgl"
+           var program = createProgram(gl, VSHADER_SOURCE, FSHADER_SOURCE);//webglcontext和着色器的关联，生成着色器程序对象。
+           getGLSLLocation(gl, program);//获取glsl中attributes和uniforms的location
+           var n = initialAttributes(gl, program);
+           gl.clearColor(0.0, 0.0, 0.0, 1.0);
+           var texture = initialTexture(gl, program, '../images/wood.png', 0);
+
+           var draw = function () {
+               gl.clear(gl.COLOR_BUFFER_BIT);
+               gl.useProgram(program);//这一步非常重要，必须指明gl要运行的着色器程序
+               gl.activeTexture(gl.TEXTURE0);
+               gl.bindTexture(gl.TEXTURE_2D, texture);
+               gl.drawArrays(gl.TRIANGLES, 0, n);
+               requestAnimationFrame(draw, canvas);
+           }
+           draw();
+        }
+
+        function getGLSLLocation(gl, program) {
+            program.a_Position = gl.getAttribLocation(program, 'a_Position');
+            program.a_TexCoord = gl.getAttribLocation(program, 'a_TexCoord');
+            program.u_Sampler = gl.getUniformLocation(program, 'u_Sampler');
+        }
+
+        function initialAttributes(gl, program) {
+            //1、为了把纹理映射到三角形上，我们需要知道三角形的每个片元对应于纹理的哪个坐标
+            //2、纹理坐标正在x和y轴上，范围0到1之间。使用纹理坐标获取纹理颜色，叫做纹理采样(Sampler)，坐标为数学笛卡尔坐标，从(0,0)到(1,1)
+            //3、纹理坐标系统是以图片为基础的，不是以标准化设备坐标为基础
+            var vertics = new Float32Array([
+                 0.0, 0.5, 0.0, 0.5, 1.0,
+                -0.5, -0.5, 0.0, 0.0, 0.0,
+                0.5, -0.5, 0.0, 1.0, 0.0
+            ]);//顶点数据,标准化设备坐标(NDC)，最后会转换到屏幕坐标上去
+
+            var vertexBuffer = gl.createBuffer();
+            if (!vertexBuffer) return -1;
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);//这个过程类似初始化一个空的ARRAY_BUFFER类型的数据缓冲区
+            gl.bufferData(gl.ARRAY_BUFFER, vertics, gl.STATIC_DRAW);//将数据填充到缓冲区中
+            var FSIZE = vertics.BYTES_PER_ELEMENT;
+
+            gl.vertexAttribPointer(program.a_Position, 3, gl.FLOAT, false, FSIZE * 5, 0);//将缓冲数据分配到对应的位置上上
+            gl.enableVertexAttribArray(program.a_Position);//开启数据分配操作
+
+            gl.vertexAttribPointer(program.a_TexCoord, 2, gl.FLOAT, false, FSIZE * 5, FSIZE * 3);
+            gl.enableVertexAttribArray(program.a_TexCoord);
+
+            return 3;
+        }
+
+        function initialTexture(gl,program,url,index) {
+            var texture = gl.createTexture();//创建一个空的texture对象
+            if (!texture) {
+                console.log('创建纹理对象失败!');
+                return false;
+            }
+            var image = new Image();
+            image.onload = function () {
+                renderTexture(gl,image,texture,program,index);
+            }
+            image.src = url;
+            return texture;
+        }
+
+        function renderTexture(gl, image, texture, program, index) {
+            gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);//图像预处理操作,翻转图片的y轴
+            gl.activeTexture(gl.TEXTURE0 + index);//首先激活纹理索引
+            gl.bindTexture(gl.TEXTURE_2D, texture);//然后绑定纹理对象
+            //设置纹理的参数，主要用来配置纹理的环绕方式(坐标超过(0,0)到(1,1)范围内)，纹理过滤方式(邻近过滤，线性过滤)，多级渐远纹理(Mipmap)
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+           //将图像填充到纹理对象上去
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+            //蒋雯丽单元设置到采样器上
+            gl.uniform1i(program.u_Sampler, index);
+            gl.bindTexture(gl.TEXTURE_2D, null);
+        };
+    </script>
+</head>
+<body onload="main()">
+    <canvas id="webgl" width="512" height="512">
+        Please use a browser that supports "canvas"
+    </canvas>
+</body>
+</html>

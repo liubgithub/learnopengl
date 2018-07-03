@@ -26,8 +26,8 @@
            }`;
 
         function main(){
-           var canvas = document.getElementById('webgl'); 
-           var gl = getWebGLContext(canvas);//拿到webglcontext,主要有這幾種 "webgl", "experimental-webgl", "webkit-3d", "moz-webgl" 
+           var canvas = document.getElementById('webgl');
+           var gl = getWebGLContext(canvas);//拿到webglcontext,主要有這幾種 "webgl", "experimental-webgl", "webkit-3d", "moz-webgl"
            var program = createProgram(gl, VSHADER_SOURCE, FSHADER_SOURCE);//webglcontext和着色器的关联，生成着色器程序对象。
            getGLSLLocation(gl, program);//获取glsl中attributes和uniforms的location
            var n = initialAttributes(gl, program);

@@ -472,7 +472,6 @@
                 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
 
                 // Pass the texure unit 0 to u_Sampler
-                gl.useProgram(program);
                 gl.uniform1i(location, index);
 
                 gl.bindTexture(gl.TEXTURE_2D, null); // Unbind texture
