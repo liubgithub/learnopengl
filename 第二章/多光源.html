@@ -1,8 +1,8 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>聚光</title>
+    <title>多光源</title>
     <script src="../lib/webgl-utils.js"></script>
     <script src="../lib/webgl-debug.js"></script>
     <script src="../lib/cuon-utils.js"></script>
@@ -11,17 +11,17 @@
         var VSHADER_SOURCE =
           `attribute vec4 a_Position;
            attribute vec4 a_Normal;        // 法线向量
-           attribute vec2 a_TextCoords;
+           attribute vec2 a_TexCoords;
            varying vec4 v_FragPos;
            varying vec3 v_Normal;
-           varying vec2 v_TextCoords;
+           varying vec2 v_TexCoords;
            uniform mat4 u_MvpMatrix;
            uniform mat4 u_normalMatrix;   //法线矩阵，因不支持inverse方法，所以这个过程在js里算
            uniform mat4 u_ModelMatrix;    // 转换矩阵
            void main() {
             v_FragPos = u_ModelMatrix * a_Position;
             v_Normal = normalize(vec3(u_normalMatrix * a_Normal));
-            v_TextCoords = a_TextCoords;
+            v_TexCoords = a_TexCoords;
             gl_Position = u_MvpMatrix * a_Position;
          }`;
 
@@ -29,15 +29,38 @@
           `#ifdef GL_ES
           precision mediump float;
           #endif
+          //光照材质
           struct Material {
                sampler2D diffuse;
                vec3 specular;
                float shininess;
           };
-          struct Light {
+          //定向光源
+          struct DirLight {
+               vec3 direction;
+  
+               vec3 ambient;
+               vec3 diffuse;
+               vec3 specular;
+          };
+          //点光源
+          struct PointLight {
+              vec3 position;
+    
+              float constant;
+              float linear;
+              float quadratic;
+  
+              vec3 ambient;
+              vec3 diffuse;
+              vec3 specular;
+          };
+          //聚光
+          struct SpotLight {
                vec3 position;
                vec3 direction;
                float cutOff;
+               float outerCutOff;
                vec3 ambient;
                vec3 diffuse;
                vec3 specular;
@@ -46,50 +69,96 @@
                float linear;//线性系数
                float quadratic;//二次系数
           };
+          
+          #define NR_POINT_LIGHTS 4
 
           varying vec4 v_FragPos;
           varying vec3 v_Normal;
-          varying vec2 v_TextCoords;
+          varying vec2 v_TexCoords;
 
           uniform vec3 u_viewPos;
+          uniform DirLight dirLight;
+          uniform PointLight pointLights[NR_POINT_LIGHTS];
           uniform Material material;
-          uniform Light light;
+          uniform SpotLight spotLight;
+
+          //光照方法的声明
+          vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir);
+          vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir);
+          vec3 CalcSpotLight(SpotLight spotlight, vec3 normal, vec3 fragPos, vec3 viewDir);
           void main() {
-            vec3 lightDir = normalize(light.position - vec3(v_FragPos));
-            //θ角，用来检测光照是否在点光源的照亮范围内
-             float theta = dot(lightDir, normalize(-light.direction));
-             if(theta > light.cutOff){// 用余弦角来比较角度的大小，再0-180度范围内，余弦函数递减
-              //环境光
-              vec3 ambient = light.ambient * texture2D(material.diffuse, v_TextCoords).rgb;
+            //计算法向量
+            vec3 norm = normalize(v_Normal);
+            //计算方向向量
+            vec3 viewDir = normalize(u_viewPos - vec3(v_FragPos));
+            //定向光
+            vec3 result = CalcDirLight(dirLight, norm, viewDir);
+            // 4个点光源
+            for(int i = 0; i < NR_POINT_LIGHTS; i++)
+               result += CalcPointLight(pointLights[i], norm, vec3(v_FragPos), viewDir);    
+            // 聚光，并相加
+            result += CalcSpotLight(spotLight, norm, vec3(v_FragPos), viewDir);    
+    
+            gl_FragColor = vec4(result, 1.0);
+          }
 
-              //漫反射光
-              vec3 norm = normalize(v_Normal);
-              float diff = max(dot(norm, lightDir), 0.0);
-              vec3 diffuse = light.diffuse * diff * texture2D(material.diffuse, v_TextCoords).rgb;
-
-              //高光，用视线方向向量去减每个像元的位置向量
-              vec3 viewDir = vec3(normalize(u_viewPos -vec3(v_FragPos)));
-              vec3 reflectDir = reflect(-lightDir, norm);
+          // 这个方法用于计算定向光效果
+          vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
+          {
+              vec3 lightDir = normalize(-light.direction);
+              float diff = max(dot(normal, lightDir), 0.0);
+              vec3 reflectDir = reflect(-lightDir, normal);
               float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
-              //乘以一个灯光的影响值
-              vec3 specular = light.specular * (spec * material.specular);
+              // 合并结果
+              vec3 ambient = light.ambient * vec3(texture2D(material.diffuse, v_TexCoords));
+              vec3 diffuse = light.diffuse * diff * vec3(texture2D(material.diffuse, v_TexCoords));
+              vec3 specular = light.specular * spec * material.specular;
+              return (ambient + diffuse + specular);
+          }
 
-              //光的衰减
-              float distance = length(light.position -vec3(v_FragPos));
-              //根据公式计算衰减系数
-              float attenuation = 1.0 / (light.constant +light.linear * distance +light.quadratic * (distance * distance))*25.0;
-              //各个光照乘以衰减系数
-              //ambient  *= attenuation;
-              diffuse   *= attenuation;
+          // 计算点光源
+          vec3 CalcPointLight(PointLight light, vec3 normal, vec3 fragPos, vec3 viewDir)
+          {
+              vec3 lightDir = normalize(light.position - fragPos);
+              float diff = max(dot(normal, lightDir), 0.0);
+              vec3 reflectDir = reflect(-lightDir, normal);
+              float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+              // attenuation
+              float distance = length(light.position - fragPos);
+              float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));    
+              vec3 ambient = light.ambient * vec3(texture2D(material.diffuse, v_TexCoords));
+              vec3 diffuse = light.diffuse * diff * vec3(texture2D(material.diffuse, v_TexCoords));
+              vec3 specular = light.specular * spec * material.specular;
+              ambient *= attenuation;
+              diffuse *= attenuation;
               specular *= attenuation;
-              //将所有影响的光相加得到逐像元的颜色值
-              vec3 result = ambient +diffuse +specular;
-              gl_FragColor = vec4(result, 1.0);
-          } else{
-             // 在点光源照亮范围外的设置同一种颜色
-             gl_FragColor = vec4(light.ambient * texture2D(material.diffuse, v_TextCoords).rgb, 1.0);
-           }
-          }`;
+              return (ambient + diffuse + specular);
+          }
+
+          // 计算聚光
+          vec3 CalcSpotLight(SpotLight light, vec3 normal, vec3 fragPos, vec3 viewDir)
+          {
+              vec3 lightDir = normalize(light.position - fragPos);
+              float diff = max(dot(normal, lightDir), 0.0);
+              vec3 reflectDir = reflect(-lightDir, normal);
+              float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+              // 衰减
+              float distance = length(light.position - fragPos);
+              float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance))*100.0;    
+              // 模糊度
+              float theta = dot(lightDir, normalize(-light.direction)); 
+              float epsilon = light.cutOff - light.outerCutOff;
+              float intensity = clamp((theta - light.outerCutOff) / epsilon, 0.0, 1.0);
+              // c合并结果
+              vec3 ambient = light.ambient * vec3(texture2D(material.diffuse, v_TexCoords));
+              vec3 diffuse = light.diffuse * diff * vec3(texture2D(material.diffuse, v_TexCoords));
+              vec3 specular = light.specular * spec * material.specular;
+              ambient *= attenuation * intensity;
+              diffuse *= attenuation * intensity;
+              specular *= attenuation * intensity;
+              return (ambient + diffuse + specular);
+          }
+          `;
         //灯光的着色器程序
         var VSHADER_SOURCE_LIGHT =
             `attribute vec4 a_Position;
@@ -126,44 +195,89 @@
             }
             initTextures(gl, n,drawCube);
         }
-        function drawCube(gl, n) {
-            //获取uniform的location
-            var u_lightPos = gl.getUniformLocation(gl.program, 'light.position');//光源位置
-            var u_lightDir = gl.getUniformLocation(gl.program, 'light.direction');//点光源照射的方向
-            var u_lightCutoff = gl.getUniformLocation(gl.program, 'light.cutOff');//内圆锥角
-            var u_lightConst = gl.getUniformLocation(gl.program, 'light.constant');//常量
-            var u_lightLinear = gl.getUniformLocation(gl.program, 'light.linear');;//线性系数
-            var u_lightQuadratic = gl.getUniformLocation(gl.program, 'light.quadratic');//二次系数
-            var u_viewPos = gl.getUniformLocation(gl.program, 'u_viewPos');
-            var u_MvpMatrix = gl.getUniformLocation(gl.program, 'u_MvpMatrix');
-            var u_ModelMatrix = gl.getUniformLocation(gl.program, 'u_ModelMatrix');
-            var u_normalMatrix = gl.getUniformLocation(gl.program, 'u_normalMatrix');
+        //为点光源传值
+        function setPointLight(gl) {
+          //4个点光源的位置，环境光，范反射，高光，和一些常亮系数用数组存放
+          var pointLightData=[[0.7,0.2,2.0,0.05,0.05,0.05,0.8,0.8,0.8,1.0,1.0,1.0,1.0,0.09,0.032],[2.3,-3.3,-4.0,0.05,0.05,0.05,0.8,0.8,0.8,1.0,1.0,1.0,1.0,0.09,0.032],[-4.0,2.0,-12.0,0.05,0.05,0.05,0.8,0.8,0.8,1.0,1.0,1.0,1.0,0.09,0.032],[0.0,0.0,-3.0,0.05,0.05,0.05,0.8,0.8,0.8,1.0,1.0,1.0,1.0,0.09,0.032]];
+            for(var i=0;i<pointLightData.length;i++){
+              var position = gl.getUniformLocation(gl.program, 'pointLights['+i+'].position');
+              gl.uniform3f(position, pointLightData[i][0],pointLightData[i][1],pointLightData[i][2]);
+              var ambient = gl.getUniformLocation(gl.program, 'pointLights['+i+'].ambient');
+              gl.uniform3f(ambient, pointLightData[i][3],pointLightData[i][4],pointLightData[i][5]);
+              var diffuse = gl.getUniformLocation(gl.program, 'pointLights['+i+'].diffuse');
+              gl.uniform3f(diffuse, pointLightData[i][6],pointLightData[i][7],pointLightData[i][8]);
+              var specular = gl.getUniformLocation(gl.program, 'pointLights['+i+'].specular');
+              gl.uniform3f(specular, pointLightData[i][9],pointLightData[i][10],pointLightData[i][11]);
+              var constant = gl.getUniformLocation(gl.program, 'pointLights['+i+'].constant');
+              gl.uniform1f(constant, pointLightData[i][12]);
+              var linear = gl.getUniformLocation(gl.program, 'pointLights['+i+'].linear');
+              gl.uniform1f(linear, pointLightData[i][13]);
+              var quadratic = gl.getUniformLocation(gl.program, 'pointLights['+i+'].quadratic');
+              gl.uniform1f(quadratic, pointLightData[i][14]);
+            }
+        }
 
-            // 设置光源的颜色
-            var cameraPos = [5.0, 10.0, 10.0];
-            var light_Pos = new Vector3([15.0,35.0, 15.0]);
-            gl.uniform3f(u_lightPos, light_Pos.elements[0], light_Pos.elements[1], light_Pos.elements[2]);
-            gl.uniform3f(u_lightDir, -15.0, -35.0, -16.0);
-            gl.uniform1f(u_lightCutoff, Math.cos((1.5 / 180) * Math.PI));
-            gl.uniform1f(u_lightConst, 1.0);
-            gl.uniform1f(u_lightLinear, 0.09);
-            gl.uniform1f(u_lightQuadratic, 0.032);
-            //不传入光源位置，但是要传入定向光的方向
-            //gl.uniform3f(u_lightDir, -0.2, -1.0, -0.3);
-            gl.uniform3f(u_viewPos, cameraPos[0], cameraPos[1], cameraPos[2]);
-            // 设置光源在世界坐标系里的方向
-            var ulight_ambient = gl.getUniformLocation(gl.program, 'light.ambient');
+        //聚光灯
+        function setSpotLight(gl,light_Pos) {
+            //获取聚光的uniform的location
+            var ulight_ambient = gl.getUniformLocation(gl.program, 'spotLight.ambient');
             gl.uniform3f(ulight_ambient, 0.2, 0.2, 0.2);
-            var ulight_diffuse = gl.getUniformLocation(gl.program, 'light.diffuse');
+            var ulight_diffuse = gl.getUniformLocation(gl.program, 'spotLight.diffuse');
             gl.uniform3f(ulight_diffuse, 0.5, 0.5, 0.5);
-            var ulight_specular = gl.getUniformLocation(gl.program, 'light.specular');
+            var ulight_specular = gl.getUniformLocation(gl.program, 'spotLight.specular');
             gl.uniform3f(ulight_specular, 1.0, 1.0, 1.0);
 
+            var u_spotlightPos = gl.getUniformLocation(gl.program, 'spotLight.position');//光源位置
+            var u_spotlightDir = gl.getUniformLocation(gl.program, 'spotLight.direction');//点光源照射的方向
+            var u_spotlightCutoff = gl.getUniformLocation(gl.program, 'spotLight.cutOff');//内圆锥角
+            var u_spotlightouterCutoff = gl.getUniformLocation(gl.program, 'spotLight.outerCutOff');//外圆锥角
+            var u_spotlightConst = gl.getUniformLocation(gl.program, 'spotLight.constant');//常量
+            var u_spotlightLinear = gl.getUniformLocation(gl.program, 'spotLight.linear');;//线性系数
+            var u_spotlightQuadratic = gl.getUniformLocation(gl.program, 'spotLight.quadratic');//二次系数
+
+            gl.uniform3f(u_spotlightPos, light_Pos.elements[0], light_Pos.elements[1], light_Pos.elements[2]);
+            gl.uniform3f(u_spotlightDir, -15.0, -35.0, -16.0);
+            gl.uniform1f(u_spotlightCutoff, Math.cos((1.5 / 180) * Math.PI));
+            gl.uniform1f(u_spotlightouterCutoff, Math.cos((2.0 / 180) * Math.PI));
+            gl.uniform1f(u_spotlightConst, 1.0);
+            gl.uniform1f(u_spotlightLinear, 0.09);
+            gl.uniform1f(u_spotlightQuadratic, 0.032);
+        }
+        //贴图光
+        function  setMaterial(gl) {
             var u_materialSpecular = gl.getUniformLocation(gl.program, 'material.specular');
             gl.uniform3f(u_materialSpecular, 0.5, 0.5, 0.5);
             var u_materialShininess = gl.getUniformLocation(gl.program, 'material.shininess');
             gl.uniform1f(u_materialShininess,4.0);
-
+        }
+        //定向光
+        function setDirLight(gl) {
+          //定向光
+            var u_dirlightDir = gl.getUniformLocation(gl.program, 'dirLight.direction');
+            //传入定向光的方向
+            gl.uniform3f(u_dirlightDir, -0.2, -1.0, -0.3);
+            var udirlight_ambient = gl.getUniformLocation(gl.program, 'dirLight.ambient');
+            gl.uniform3f(udirlight_ambient, 0.3, 0.3, 0.3);
+            var udirlight_diffuse = gl.getUniformLocation(gl.program, 'dirLight.diffuse');
+            gl.uniform3f(udirlight_diffuse, 0.5, 0.5, 0.5);
+            var udirlight_specular = gl.getUniformLocation(gl.program, 'dirLight.specular');
+            gl.uniform3f(udirlight_specular, 1.0, 1.0, 1.0);
+        }
+        function drawCube(gl, n) {
+            //相机、灯光
+            var cameraPos = [5.0, 10.0, 10.0];
+            var light_Pos = new Vector3([15.0,35.0, 15.0]);
+            //获取其他不是灯光相关uniform的位置
+            var u_viewPos = gl.getUniformLocation(gl.program, 'u_viewPos');
+            gl.uniform3f(u_viewPos, cameraPos[0], cameraPos[1], cameraPos[2]);
+            var u_MvpMatrix = gl.getUniformLocation(gl.program, 'u_MvpMatrix');
+            var u_ModelMatrix = gl.getUniformLocation(gl.program, 'u_ModelMatrix');
+            var u_normalMatrix = gl.getUniformLocation(gl.program, 'u_normalMatrix');
+            //向各个光源传入数据
+            setMaterial(gl);
+            setDirLight(gl);
+            setPointLight(gl);
+            setSpotLight(gl,light_Pos);
             // 计算mvp矩阵
             var g_mvpMatrix = new Matrix4();
             g_mvpMatrix.setPerspective(35, gl.canvas.width / gl.canvas.height, 1, 100);
@@ -173,7 +287,7 @@
             gl.enable(gl.DEPTH_TEST);
             // 清除颜色缓冲和深度缓冲
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
+            //箱子的位置
             var positions = [
               [0.0,0.0,0.0],
               [2.0,5.0,-15.0],
@@ -267,7 +381,7 @@
 
             // 想缓冲区对象中写入数据
             if (!initArrayBuffer(gl, 'a_Position', vertices, 3, gl.FLOAT)) return -1;
-            if (!initArrayBuffer(gl, 'a_TextCoords', texCoords, 2, gl.FLOAT)) return -1;
+            if (!initArrayBuffer(gl, 'a_TexCoords', texCoords, 2, gl.FLOAT)) return -1;
             if (!initArrayBuffer(gl, 'a_Normal', normals, 3, gl.FLOAT)) return -1;
 
             //向缓冲区对象中写入索引数据

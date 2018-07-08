@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>点光源的衰减</title>
+    <title>聚光柔和</title>
     <script src="../lib/webgl-utils.js"></script>
     <script src="../lib/webgl-debug.js"></script>
     <script src="../lib/cuon-utils.js"></script>
@@ -87,7 +87,7 @@
               //根据公式计算衰减系数
               float attenuation = 1.0 / (light.constant +light.linear * distance +light.quadratic * (distance * distance))*30.0;
               //各个光照乘以衰减系数
-              ambient  *= attenuation;
+              //ambient  *= attenuation;//环境光不做衰减，避免在光锥体外的物体一点都看不到
               diffuse   *= attenuation;
               specular *= attenuation;
               //将所有影响的光相加得到逐像元的颜色值

@@ -31,7 +31,7 @@
           #endif
           struct Material {
                sampler2D diffuse;
-               vec3 specular;
+               sampler2D specular;
                float shininess;
           };
           struct Light {
@@ -63,7 +63,7 @@
             vec3 reflectDir = reflect(-lightDir, norm);
             float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
             //乘以一个灯光的影响值
-            vec3 specular = light.specular * (spec * material.specular);
+            vec3 specular = light.specular * spec * texture2D(material.specular,v_TextCoords).rgb;
             //将所有影响的光相加得到逐像元的颜色值
             vec3 result = ambient +diffuse +specular;
             gl_FragColor = vec4(result, 1.0);
@@ -102,7 +102,11 @@
                 console.log('数据初始化失败');
                 return;
             }
-            initTextures(gl, n,drawCube);
+            initTextures(gl, n,'material.diffuse',0,'../images/container2.png');
+            initTextures(gl, n,'material.specular',1,'../images/container2_specular.png');
+            setTimeout(function(){
+                drawCube(gl, n);
+            },500);
         }
         function drawCube(gl, n) {
             //获取uniform的location
@@ -125,8 +129,8 @@
             var ulight_specular = gl.getUniformLocation(gl.program, 'light.specular');
             gl.uniform3f(ulight_specular, 1.0, 1.0, 1.0);
 
-            var u_materialSpecular = gl.getUniformLocation(gl.program, 'material.specular');
-            gl.uniform3f(u_materialSpecular, 0.5, 0.5, 0.5);
+            //var u_materialSpecular = gl.getUniformLocation(gl.program, 'material.specular');
+            //gl.uniform3f(u_materialSpecular, 0.5, 0.5, 0.5);
             var u_materialShininess = gl.getUniformLocation(gl.program, 'material.shininess');
             gl.uniform1f(u_materialShininess,32.0);
 
@@ -248,13 +252,13 @@
             return true;
         }
 
-        function initTextures(gl, n, drawCube) {
+        function initTextures(gl, n,sampler,unit,src) {
             var texture = gl.createTexture(); 
             var image = new Image(); 
             // 图像的异步加载操作
             image.onload = function () {
                 gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1); 
-                gl.activeTexture(gl.TEXTURE0);
+                gl.activeTexture(gl.TEXTURE0+unit);
                 gl.bindTexture(gl.TEXTURE_2D, texture);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
                 //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -262,13 +266,15 @@
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
                 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-                var u_Sampler = gl.getUniformLocation(gl.program, 'material.diffuse');
-                gl.uniform1i(u_Sampler, 0);
-                drawCube(gl, n);
-                gl.bindTexture(gl.TEXTURE_2D, null); // 解绑纹理
+                //var u_Sampler = gl.getUniformLocation(gl.program, 'material.diffuse');
+                var u_Sampler = gl.getUniformLocation(gl.program, sampler);
+                gl.uniform1i(u_Sampler, unit);
+                //drawCube(gl,n);
+                //gl.bindTexture(gl.TEXTURE_2D, null); 
+               
             };
 
-            image.src = '../images/container2.png';
+            image.src = src;
 
             return texture;
         }

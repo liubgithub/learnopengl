@@ -1,8 +1,8 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title></title>
+    <title>混合</title>
     <script src="../lib/webgl-utils.js"></script>
     <script src="../lib/webgl-debug.js"></script>
     <script src="../lib/cuon-utils.js"></script>
@@ -10,39 +10,82 @@
     <script type="text/javascript">
         // ProgramObject.js (c) 2012 matsuda and kanda
         // Vertex shader for single color drawing
-        var stencil_testing_vs =
-          `attribute vec4 a_Position;
-           attribute vec2 a_TexCoord;
-           //attribute vec4 a_Normal;
-           uniform mat4 u_MvpMatrix;
-           //uniform mat4 u_NormalMatrix;
-           varying vec2 v_TexCoord;
-           void main() { 
-               v_TexCoord = a_TexCoord;
-               gl_Position = u_MvpMatrix * a_Position;
-           }`;
+        var SOLID_VSHADER_SOURCE =
+          'attribute vec4 a_Position;\n' +
+          'attribute vec4 a_Normal;\n' +
+          'uniform mat4 u_MvpMatrix;\n' +
+          'uniform mat4 u_NormalMatrix;\n' +
+          'varying vec4 v_Color;\n' +
+          'void main() {\n' +
+          '  vec3 lightDirection = vec3(0.0, 0.0, 1.0);\n' + // Light direction(World coordinate)
+        '  vec4 color = vec4(0.0, 1.0, 1.0, 1.0);\n' +     // Face color
+        '  gl_Position = u_MvpMatrix * a_Position;\n' +
+          '  vec3 normal = normalize(vec3(u_NormalMatrix * a_Normal));\n' +
+          '  float nDotL = max(dot(normal, lightDirection), 0.0);\n' +
+          '  v_Color = vec4(color.rgb * nDotL, color.a);\n' +
+          '}\n';
 
         // Fragment shader for single color drawing
-        var stencil_testing_fs =
-          `#ifdef GL_ES
-            precision mediump float;
-           #endif
-           varying vec2 v_TexCoord;
-           uniform sampler2D u_Sampler;
-           void main() {
-               gl_FragColor =texture2D(u_Sampler, v_TexCoord);
-           }`;
+        var SOLID_FSHADER_SOURCE =
+          '#ifdef GL_ES\n' +
+          'precision mediump float;\n' +
+          '#endif\n' +
+          'varying vec4 v_Color;\n' +
+          'void main() {\n' +
+          '  gl_FragColor = v_Color;\n' +
+          '}\n';
 
+        // Vertex shader for texture drawing
+        var TEXTURE_VSHADER_SOURCE =
+          'attribute vec4 a_Position;\n' +
+          'attribute vec4 a_Normal;\n' +
+          'attribute vec2 a_TexCoord;\n' +
+          'uniform mat4 u_MvpMatrix;\n' +
+          'uniform mat4 u_NormalMatrix;\n' +
+          'varying float v_NdotL;\n' +
+          'varying vec2 v_TexCoord;\n' +
+          'void main() {\n' +
+          '  vec3 lightDirection = vec3(0.0, 0.0, 1.0);\n' + // Light direction(World coordinate)
+          '  gl_Position = u_MvpMatrix * a_Position;\n' +
+          '  vec3 normal = normalize(vec3(u_NormalMatrix * a_Normal));\n' +
+          '  v_NdotL = max(dot(normal, lightDirection), 0.0);\n' +
+          '  v_TexCoord = a_TexCoord;\n' +
+          '}\n';
 
         // Fragment shader for texture drawing
-        var stencil_single_color_fs =
-          `#ifdef GL_ES
-          precision mediump float;
-          #endif
-          void main() {
-            gl_FragColor = vec4(0.04, 0.28, 0.26, 1.0);
-          }`;
-  
+        var TEXTURE_FSHADER_SOURCE =
+          '#ifdef GL_ES\n' +
+          'precision mediump float;\n' +
+          '#endif\n' +
+          'uniform sampler2D u_Sampler;\n' +
+          'varying vec2 v_TexCoord;\n' +
+          'varying float v_NdotL;\n' +
+          'void main() {\n' +
+          '  vec4 color = texture2D(u_Sampler, v_TexCoord);\n' +
+          '  gl_FragColor = vec4(color.rgb * v_NdotL, color.a);\n' +
+          '}\n';
+        //Window
+        var WINDOW_VSHADER_SOURCE =
+         'attribute vec4 a_Position;\n' +
+         'attribute vec2 a_TexCoord;\n' +
+         'uniform mat4 u_transMatrix;\n' +
+         'varying vec2 v_TexCoord;\n' +
+         'void main() {\n' +
+         '  gl_Position =u_transMatrix * a_Position;\n' +
+         '  v_TexCoord = a_TexCoord;\n' +
+         '}\n';
+
+        var WINDOW_FSHADER_SOURCE =
+          '#ifdef GL_ES\n' +
+          'precision mediump float;\n' +
+          '#endif\n' +
+          'uniform sampler2D u_Sampler;\n' +
+          'varying vec2 v_TexCoord;\n' +
+          'void main() {\n' +
+          'vec4 texColor = texture2D(u_Sampler, v_TexCoord);\n' +
+          '  gl_FragColor = texColor;\n' +
+          //'  gl_FragColor = vec4(vec3(v_TexCoord,1.0),1.0);\n' + //纹理坐标测试
+          '}\n';
 
         function main() {
             // Retrieve <canvas> element
@@ -56,23 +99,41 @@
             }
 
             // Initialize shaders
-            var ObjectProgram = createProgram(gl, stencil_testing_vs, stencil_testing_fs);
-            var singleColorProgram = createProgram(gl, stencil_testing_vs, stencil_single_color_fs);
-            if (!ObjectProgram || !singleColorProgram) {
+            var solidProgram = createProgram(gl, SOLID_VSHADER_SOURCE, SOLID_FSHADER_SOURCE);
+            var texProgram = createProgram(gl, TEXTURE_VSHADER_SOURCE, TEXTURE_FSHADER_SOURCE);
+            var texWindowProgram = createProgram(gl, WINDOW_VSHADER_SOURCE, WINDOW_FSHADER_SOURCE);
+            if (!solidProgram || !texProgram) {
                 console.log('Failed to intialize shaders.');
                 return;
             }
 
             // Get storage locations of attribute and uniform variables in program object for single color drawing
-            ObjectProgram.a_Position = gl.getAttribLocation(ObjectProgram, 'a_Position');
-            ObjectProgram.a_TexCoord = gl.getAttribLocation(ObjectProgram, 'a_TexCoord');
-            ObjectProgram.u_MvpMatrix = gl.getUniformLocation(ObjectProgram, 'u_MvpMatrix');
-            ObjectProgram.u_Sampler = gl.getUniformLocation(ObjectProgram, 'u_Sampler');
+            solidProgram.a_Position = gl.getAttribLocation(solidProgram, 'a_Position');
+            solidProgram.a_Normal = gl.getAttribLocation(solidProgram, 'a_Normal');
+            solidProgram.u_MvpMatrix = gl.getUniformLocation(solidProgram, 'u_MvpMatrix');
+            solidProgram.u_NormalMatrix = gl.getUniformLocation(solidProgram, 'u_NormalMatrix');
 
             // Get storage locations of attribute and uniform variables in program object for texture drawing
-            singleColorProgram.a_Position = gl.getAttribLocation(singleColorProgram, 'a_Position');
-            singleColorProgram.a_TexCoord = gl.getAttribLocation(singleColorProgram, 'a_TexCoord');
-            singleColorProgram.u_MvpMatrix = gl.getUniformLocation(singleColorProgram, 'u_MvpMatrix');
+            texProgram.a_Position = gl.getAttribLocation(texProgram, 'a_Position');
+            texProgram.a_Normal = gl.getAttribLocation(texProgram, 'a_Normal');
+            texProgram.a_TexCoord = gl.getAttribLocation(texProgram, 'a_TexCoord');
+            texProgram.u_MvpMatrix = gl.getUniformLocation(texProgram, 'u_MvpMatrix');
+            texProgram.u_NormalMatrix = gl.getUniformLocation(texProgram, 'u_NormalMatrix');
+            texProgram.u_Sampler = gl.getUniformLocation(texProgram, 'u_Sampler');
+
+            //Get window locations of attribute and uniform variables in program object
+            texWindowProgram.a_Position = gl.getAttribLocation(texWindowProgram, 'a_Position');
+            texWindowProgram.a_TexCoord = gl.getAttribLocation(texWindowProgram, 'a_TexCoord');
+            texWindowProgram.u_MvpMatrix = gl.getUniformLocation(texWindowProgram, 'u_transMatrix');
+            texWindowProgram.u_Sampler = gl.getUniformLocation(texWindowProgram, 'u_Sampler');
+
+            if (solidProgram.a_Position < 0 || solidProgram.a_Normal < 0 ||
+                !solidProgram.u_MvpMatrix || !solidProgram.u_NormalMatrix ||
+                texProgram.a_Position < 0 || texProgram.a_Normal < 0 || texProgram.a_TexCoord < 0 ||
+                !texProgram.u_MvpMatrix || !texProgram.u_NormalMatrix || !texProgram.u_Sampler) {
+                console.log('Failed to get the storage location of attribute or uniform variable');
+                return;
+            }
 
             // Set the vertex information
             var cube = initVertexBuffers(gl);
@@ -80,21 +141,20 @@
                 console.log('Failed to set the vertex information');
                 return;
             }
-            var plane = initPlaneVertexBuffers(gl);
+            var windowObject = initWindowVertexBuffers(gl);
             // Set texture
-            var textureCube = initTextures(gl, ObjectProgram, '../images/marble.jpg', 0);
-            var texturePlane = initTextures(gl, ObjectProgram, '../images/metal.png', 1);
-            if (!textureCube||!texturePlane) {
+            var texture = initTextures(gl, texProgram, '../images/wall.jpg');
+            if (!texture) {
                 console.log('Failed to intialize the texture.');
                 return;
             }
+
+            var windowTexture = initTextures(gl, texWindowProgram, '../images/window.png');
             // Set the clear color and enable the depth test
             gl.enable(gl.DEPTH_TEST);
-            gl.depthFunc(gl.LESS);
-            gl.enable(gl.STENCIL_TEST);
-            //gl.stencilFunc(gl.NOTEQUAL, 1, 1);
-            gl.stencilOp(gl.KEEP, gl.KEEP, gl.REPLACE);
-            //gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+            gl.clearColor(0.0, 0.0, 0.0, 1.0);
 
             // Calculate the view projection matrix
             var viewProjMatrix = new Matrix4();
@@ -104,79 +164,21 @@
             // Start drawing
             var currentAngle = 0.0; // Current rotation angle (degrees)
             var tick = function () {
-                ////currentAngle = animate(currentAngle);  // Update current rotation angle
-                //gl.clearColor(0.0, 0.0, 0.0, 1.0);
-                //gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
-                //gl.clear(gl.STENCIL_BUFFER_BIT);
-
-                //gl.useProgram(ObjectProgram);   // Tell that this program object is used
-                //gl.stencilMask(0);
-                //// Draw a cube in single color
-                //drawPlaneObject(gl, ObjectProgram, plane, texturePlane, 0.0, currentAngle, viewProjMatrix);
-                //gl.bindBuffer(gl.ARRAY_BUFFER, null);
-                //gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-                //// Draw a cube with texture
-
-                //gl.stencilMask(1);
-                //gl.stencilFunc(gl.ALWAYS, 1, 1);
-                //drawCubeObject(gl, ObjectProgram, cube, textureCube, 0.0, currentAngle,1.0, viewProjMatrix);
-
-                //gl.useProgram(singleColorProgram);
-                //gl.stencilMask(0);
-                //gl.stencilFunc(gl.NOTEQUAL, 1, 1);
-                //gl.disable(gl.DEPTH_TEST);
-                //drawCubeObject(gl, singleColorProgram, cube, textureCube, 0.0, currentAngle, 1.1, viewProjMatrix);
-                //gl.bindBuffer(gl.ARRAY_BUFFER, null);
-                //gl.enable(gl.DEPTH_TEST);
-                //gl.stencilMask(1);
-
-                //方法2，用深度测试实现
                 currentAngle = animate(currentAngle);  // Update current rotation angle
-                gl.clearColor(0.0, 0.0, 0.0, 1.0);
+
                 gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
-                //画平面
-                gl.useProgram(ObjectProgram);
-                drawPlaneObject(gl, ObjectProgram, plane, texturePlane, 0.0, currentAngle, viewProjMatrix);
-                gl.bindBuffer(gl.ARRAY_BUFFER, null);
-                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+                // Draw a cube in single color
+                drawSolidCube(gl, solidProgram, cube, 0.0, currentAngle, viewProjMatrix);
+                // Draw a cube with texture
+                drawTexCube(gl, texProgram, cube, texture, 2.0, currentAngle, viewProjMatrix);
 
-                //画边线
-                gl.useProgram(singleColorProgram);
-                gl.disable(gl.DEPTH_TEST);
-                drawCubeObject(gl, singleColorProgram, cube, textureCube, 0.0, currentAngle, 1.05, viewProjMatrix);
-                gl.bindBuffer(gl.ARRAY_BUFFER, null);
-                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-
-                //画盒子
-                gl.useProgram(ObjectProgram);   // Tell that this program object is used
-                gl.enable(gl.DEPTH_TEST);
-                drawCubeObject(gl, ObjectProgram, cube, textureCube, 0.0, currentAngle, 1.0, viewProjMatrix);
-
-                //方法3
-                //currentAngle = animate(currentAngle);  // Update current rotation angle
-                //gl.clearColor(0.0, 0.0, 0.0, 1.0);
-                //gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
-
-                //gl.enable(gl.CULL_FACE);								//开启剪裁
-                //gl.cullFace(gl.BACK);									//剪裁背面
-                //gl.frontFace(gl.CW);
-                //gl.useProgram(singleColorProgram);
-                //drawCubeObject(gl, singleColorProgram, cube, textureCube, 0.0, currentAngle, 1.05, viewProjMatrix);
-                //gl.bindBuffer(gl.ARRAY_BUFFER, null);
-                //gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-
-                //gl.frontFace(gl.CCW);
-                ////画盒子
-                //gl.useProgram(ObjectProgram);   // Tell that this program object is used
-                //drawCubeObject(gl, ObjectProgram, cube, textureCube, 0.0, currentAngle, 1.0, viewProjMatrix);
-
-                //gl.disable(gl.CULL_FACE);
-                //drawPlaneObject(gl, ObjectProgram, plane, texturePlane, 0.0, currentAngle, viewProjMatrix);
-                //gl.bindBuffer(gl.ARRAY_BUFFER, null);
-                //gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+                drawWindow(gl, texWindowProgram, windowObject, windowTexture, 1.0, currentAngle, viewProjMatrix);
                 requestAnimationFrame(tick, canvas);
             };
             tick();
+            //setTimeout(function () {
+            //    tick();
+            //}, 100);
         }
 
         function initVertexBuffers(gl) {
@@ -244,7 +246,7 @@
         }
 
         //初始化草的相关数据
-        function initPlaneVertexBuffers(gl) {
+        function initWindowVertexBuffers(gl) {
             var _verticesCoords = new Float32Array([
               // Vertex coordinates, texture coordinate
               -1.0, 1.0, 0.0,
@@ -294,7 +296,7 @@
             return o;
         }
 
-        function initTextures(gl, program,url,i) {
+        function initTextures(gl, program,url) {
             var texture = gl.createTexture();   // Create a texture object
             if (!texture) {
                 console.log('Failed to create the texture object');
@@ -326,38 +328,48 @@
 
             // Tell the browser to load an Image
             image.src = url;
-            texture.index = i;
+
             return texture;
         }
 
-        function drawCubeObject(gl, program, o,texture, x, angle,scale, viewProjMatrix) {
-            //gl.useProgram(program);
+        function drawSolidCube(gl, program, o, x, angle, viewProjMatrix) {
+            gl.useProgram(program);   // Tell that this program object is used
+
             // Assign the buffer objects and enable the assignment
-            if (program.a_Position != undefined && program.a_Position != null)
-                initAttributeVariable(gl, program.a_Position, o.vertexBuffer);  // Vertex coordinates
-            //initAttributeVariable(gl, program.a_Normal, o.normalBuffer);    // Normal
-            if (program.a_TexCoord != undefined && program.a_TexCoord != null)
-                initAttributeVariable(gl, program.a_TexCoord, o.texCoordBuffer);// Texture coordinates
+            initAttributeVariable(gl, program.a_Position, o.vertexBuffer); // Vertex coordinates
+            initAttributeVariable(gl, program.a_Normal, o.normalBuffer);   // Normal
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);  // Bind indices
+
+            drawPlane(gl, program, o, x, angle, viewProjMatrix);   // Draw
+        }
+
+        function drawWindow(gl, program, o, texture, x, angle, viewProjMatrix) {
+            gl.useProgram(program);   // Tell that this program object is used
+
+            // Assign the buffer objects and enable the assignment
+            initAttributeVariable(gl, program.a_Position, o.vertexBuffer); // Vertex coordinates
+            initAttributeVariable(gl, program.a_TexCoord, o.texCoordBuffer);// Texture coordinates
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);  // Bind indices
+
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            drawQuad(gl, program, o, x, angle, viewProjMatrix);
+        }
+
+        function drawTexCube(gl, program, o, texture, x, angle, viewProjMatrix) {
+            gl.useProgram(program);   // Tell that this program object is used
+
+            // Assign the buffer objects and enable the assignment
+            initAttributeVariable(gl, program.a_Position, o.vertexBuffer);  // Vertex coordinates
+            initAttributeVariable(gl, program.a_Normal, o.normalBuffer);    // Normal
+            initAttributeVariable(gl, program.a_TexCoord, o.texCoordBuffer);// Texture coordinates
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer); // Bind indices
 
             // Bind texture object to texture unit 0
-            if (texture) {
-                gl.activeTexture(gl.TEXTURE0);
-                gl.bindTexture(gl.TEXTURE_2D, texture);
-            }
-            drawCube(gl, program, o, x, angle,scale, viewProjMatrix); // Draw
-            //gl.bindTexture(gl.TEXTURE_2D, null);
-        }
-        function drawPlaneObject(gl, program, o, texture, x, angle, viewProjMatrix) {
-            //gl.useProgram(program);
-            // Assign the buffer objects and enable the assignment
-            initAttributeVariable(gl, program.a_Position, o.vertexBuffer); // Vertex coordinates
-            initAttributeVariable(gl, program.a_TexCoord, o.texCoordBuffer);   // Normal
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);  // Bind indices
             gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_2D, texture);
-            drawQuad(gl, program, o, x, angle, viewProjMatrix);   // Draw
-            //gl.bindTexture(gl.TEXTURE_2D, null);
+
+            drawCube(gl, program, o, x, angle, viewProjMatrix); // Draw
         }
 
         // Assign the buffer objects and enable the assignment
@@ -372,10 +384,11 @@
             var g_mvpMatrix = new Matrix4();
             var g_normalMatrix = new Matrix4();
             // Calculate a model matrix
-            g_modelMatrix.setTranslate(x, -1.0, 0.0);
-            g_modelMatrix.rotate(290.0, 1.0, 0.0, 0.0);
-           g_modelMatrix.rotate(angle, 0.0, 0.0, 1.0);
-            g_modelMatrix.scale(3.0, 3.0, 3.0);
+            g_modelMatrix.setTranslate(x, -0.5, 2.0);
+            g_modelMatrix.rotate(20.0, 1.0, 0.0, 0.0);
+            g_modelMatrix.rotate(angle, 0.0, 1.0, 0.0);
+
+
             // Calculate model view projection matrix and pass it to u_MvpMatrix
             g_mvpMatrix.set(viewProjMatrix);
             g_mvpMatrix.multiply(g_modelMatrix);
@@ -383,16 +396,40 @@
 
             gl.drawElements(gl.TRIANGLES, o.numIndices, o.indexBuffer.type, 0);   // Draw
         }
-        function drawCube(gl, program, o, x, angle,scale, viewProjMatrix) {
+
+        function drawPlane(gl, program, o, x, angle, viewProjMatrix) {
             // Coordinate transformation matrix
             var g_modelMatrix = new Matrix4();
             var g_mvpMatrix = new Matrix4();
             var g_normalMatrix = new Matrix4();
             // Calculate a model matrix
-            g_modelMatrix.setTranslate(x, 0.1, 0.0);
+            g_modelMatrix.setTranslate(x, -1.0, 0.0);
             g_modelMatrix.rotate(20.0, 1.0, 0.0, 0.0);
             g_modelMatrix.rotate(angle, 0.0, 1.0, 0.0);
-            g_modelMatrix.scale(scale, scale, scale);
+
+            g_modelMatrix.scale(3, 0.02, 3);
+            // Calculate transformation matrix for normals and pass it to u_NormalMatrix
+            g_normalMatrix.setInverseOf(g_modelMatrix);
+            g_normalMatrix.transpose();
+            gl.uniformMatrix4fv(program.u_NormalMatrix, false, g_normalMatrix.elements);
+
+            // Calculate model view projection matrix and pass it to u_MvpMatrix
+            g_mvpMatrix.set(viewProjMatrix);
+            g_mvpMatrix.multiply(g_modelMatrix);
+            gl.uniformMatrix4fv(program.u_MvpMatrix, false, g_mvpMatrix.elements);
+
+            gl.drawElements(gl.TRIANGLES, o.numIndices, o.indexBuffer.type, 0);   // Draw
+        }
+
+        function drawCube(gl, program, o, x, angle, viewProjMatrix) {
+            // Coordinate transformation matrix
+            var g_modelMatrix = new Matrix4();
+            var g_mvpMatrix = new Matrix4();
+            var g_normalMatrix = new Matrix4();
+            // Calculate a model matrix
+            g_modelMatrix.setTranslate(x, 0.0, 0.0);
+            g_modelMatrix.rotate(20.0, 1.0, 0.0, 0.0);
+            g_modelMatrix.rotate(angle, 0.0, 1.0, 0.0);
 
             // Calculate transformation matrix for normals and pass it to u_NormalMatrix
             g_normalMatrix.setInverseOf(g_modelMatrix);
@@ -449,7 +486,7 @@
             // Update the current rotation angle (adjusted by the elapsed time)
             var newAngle = angle + (ANGLE_STEP * elapsed) / 1000.0;
             return newAngle % 360;
-    }
+        }
     </script>
 </head>
 <body onload="main()">
@@ -459,8 +496,10 @@
         </canvas>
     </div>
     <div>
+        1、纹理载入异步与画vao对象的问题，利用requestframe解决。<br>
+        2、缓冲数据vao的理解加深一步，可以看做数据初始化后一直存在，要画的时候直接去拿了在画。<br>
+        3、各种切换glsl<br>
+        4、discard的妙用<br>
     </div>
 </body>
 </html>
-
-  
