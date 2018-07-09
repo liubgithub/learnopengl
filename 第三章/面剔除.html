@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -8,153 +8,109 @@
     <script src="../lib/cuon-utils.js"></script>
     <script src="../lib/cuon-matrix.js"></script>
     <script type="text/javascript">
-        // ProgramObject.js (c) 2012 matsuda and kanda
-        // Vertex shader for single color drawing
-        // Vertex shader for texture drawing
-        var TEXTURE_VSHADER_SOURCE =
-          'attribute vec4 a_Position;\n' +
-          'attribute vec4 a_Normal;\n' +
-          'attribute vec2 a_TexCoord;\n' +
-          'uniform mat4 u_MvpMatrix;\n' +
-          'uniform mat4 u_NormalMatrix;\n' +
-          'varying float v_NdotL;\n' +
-          'varying vec2 v_TexCoord;\n' +
-          'void main() {\n' +
-          '  vec3 lightDirection = vec3(0.0, 0.0, 1.0);\n' + // Light direction(World coordinate)
-          '  gl_Position = u_MvpMatrix * a_Position;\n' +
-          '  vec3 normal = normalize(vec3(u_NormalMatrix * a_Normal));\n' +
-          '  v_NdotL = max(dot(normal, lightDirection), 0.0);\n' +
-          '  v_TexCoord = a_TexCoord;\n' +
-          '}\n';
+        //顶点着色器
+        var VSHADER_SOURCE =
+          `attribute vec4 a_Position;
+           attribute vec2 a_TexCoord;
+           uniform mat4 u_MvpMatrix;
+           varying vec2 v_TexCoord;
+           void main() {
+               v_TexCoord = a_TexCoord;
+               gl_Position = u_MvpMatrix * a_Position;
+           }`;
 
-        // Fragment shader for texture drawing
-        var TEXTURE_FSHADER_SOURCE =
-          '#ifdef GL_ES\n' +
-          'precision mediump float;\n' +
-          '#endif\n' +
-          'uniform sampler2D u_Sampler;\n' +
-          'varying vec2 v_TexCoord;\n' +
-          'varying float v_NdotL;\n' +
-          'void main() {\n' +
-          '  vec4 color = texture2D(u_Sampler, v_TexCoord);\n' +
-          '  gl_FragColor = vec4(color.rgb * v_NdotL, color.a);\n' +
-          '}\n';
+        // 片元着色器
+        var FSHADER_SOURCE =
+          `#ifdef GL_ES
+            precision mediump float;
+           #endif
+           varying vec2 v_TexCoord;
+           uniform sampler2D u_Sampler;
+           void main() {
+               gl_FragColor =texture2D(u_Sampler, v_TexCoord);
+           }`;
 
+        var cull_face = 'BACK';
         function main() {
-            // Retrieve <canvas> element
             var canvas = document.getElementById('webgl');
 
-            // Get the rendering context for WebGL
+            // 获取webgl绘制上下文
             var gl = getWebGLContext(canvas);
             if (!gl) {
                 console.log('Failed to get the rendering context for WebGL');
                 return;
             }
 
-            // Initialize shaders
-            var texProgram = createProgram(gl, TEXTURE_VSHADER_SOURCE, TEXTURE_FSHADER_SOURCE);
-
-            // Get storage locations of attribute and uniform variables in program object for texture drawing
-            texProgram.a_Position = gl.getAttribLocation(texProgram, 'a_Position');
-            texProgram.a_Normal = gl.getAttribLocation(texProgram, 'a_Normal');
-            texProgram.a_TexCoord = gl.getAttribLocation(texProgram, 'a_TexCoord');
-            texProgram.u_MvpMatrix = gl.getUniformLocation(texProgram, 'u_MvpMatrix');
-            texProgram.u_NormalMatrix = gl.getUniformLocation(texProgram, 'u_NormalMatrix');
-            texProgram.u_Sampler = gl.getUniformLocation(texProgram, 'u_Sampler');
-
-            // Set the vertex information
-            var cube = initVertexBuffers(gl);
-            if (!cube) {
-                console.log('Failed to set the vertex information');
+             // 初始化着色器程序
+            var ObjectProgram = createProgram(gl, VSHADER_SOURCE, FSHADER_SOURCE);
+            if (!ObjectProgram) {
+                console.log('Failed to intialize shaders.');
                 return;
             }
-            // Set texture
-            var texture = initTextures(gl, texProgram, '../images/wall.jpg');
-            if (!texture) {
+
+            //获取着色器程序中的location
+            ObjectProgram.a_Position = gl.getAttribLocation(ObjectProgram, 'a_Position');
+            ObjectProgram.a_TexCoord = gl.getAttribLocation(ObjectProgram, 'a_TexCoord');
+            ObjectProgram.u_MvpMatrix = gl.getUniformLocation(ObjectProgram, 'u_MvpMatrix');
+            ObjectProgram.u_Sampler = gl.getUniformLocation(ObjectProgram, 'u_Sampler');
+
+            // 创建cube对象
+            var cube = initVertexBuffers(gl);
+            if (!cube) {
+                console.log('创建cube对象失败');
+                return;
+            }
+
+            // 设置纹理
+            var textureCube = initTextures(gl, ObjectProgram, '../images/wall.jpg', 0);
+            if (!textureCube) {
                 console.log('Failed to intialize the texture.');
                 return;
             }
-
-            // Set the clear color and enable the depth test
+            // 开启深度测试
             gl.enable(gl.DEPTH_TEST);
-            gl.clearColor(0.0, 0.0, 0.0, 1.0);
-            //设置允许面剔除效果
-            gl.enable(gl.CULL_FACE);
-            //gl.cullFace(gl.FRONT);
-            // Calculate the view projection matrix
+            //取小于深度缓冲中的深度值
+            gl.depthFunc(gl.LESS);
+            gl.enable(gl.CULL_FACE);								//开启剪裁
+            gl.cullFace(gl[cull_face]);									//默认开启剪裁前面
+            // 计算相机矩阵
             var viewProjMatrix = new Matrix4();
-            viewProjMatrix.setPerspective(10.0, canvas.width / canvas.height, 1.0, 100.0);
+            viewProjMatrix.setPerspective(30.0, canvas.width / canvas.height, 1.0, 100.0);
             viewProjMatrix.lookAt(0.0, 0.0, 15.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
-
-            // Start drawing
-            var currentAngle = 45.0; // Current rotation angle (degrees)
+            gl.useProgram(ObjectProgram);   //启用ObjectProgram着色器程序
+            // 开始绘制，raf方式绘制
+            var currentAngle = 10.0; // 初始化角度为10
             var tick = function () {
-                currentAngle = animate(currentAngle);  // Update current rotation angle
-
-                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
-                //gl.cullFace(gl.FRONT);
-                // Draw a cube with texture
-                drawTexCube(gl, texProgram, cube, texture, 0.0, currentAngle, viewProjMatrix);
+                currentAngle = animate(currentAngle);  // 计算当前旋转角
+                gl.clearColor(0.0, 0.0, 0.0, 1.0);
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); //清除操作
+                //切换裁剪的方式
+                gl.cullFace(gl[cull_face]);
+                //画盒子
+                drawCubeObject(gl, ObjectProgram, cube, textureCube, 0.0, currentAngle, 1.0, viewProjMatrix);
                 requestAnimationFrame(tick, canvas);
             };
-            //tick();
-            setTimeout(function () {
-                tick();
-            }, 100);
+            tick();
+            domEvent();
         }
 
         function initVertexBuffers(gl) {
             // Create a cube
             //    v6----- v5
-            //   /|      /|
+            //   /|           /|
             //  v1------v0|
-            //  | |     | |
-            //  | |v7---|-|v4
-            //  |/      |/
+            //  | |           | |
+            //  | |v7--   -|-|v4
+            //  |/            |/
             //  v2------v3
 
-            var vertices = new Float32Array([   // Vertex coordinates
-              -0.5, -0.5, -0.5,    // Bottom-left
-     0.5,  0.5, -0.5,    // top-right
-     0.5, -0.5, -0.5,    // bottom-right         
-     0.5,  0.5, -0.5,    // top-right
-    -0.5, -0.5, -0.5,    // bottom-left
-    -0.5,  0.5, -0.5,    // top-left
-    // Front face
-    -0.5, -0.5,  0.5,    // bottom-left
-     0.5, -0.5,  0.5,    // bottom-right
-     0.5,  0.5,  0.5,    // top-right
-     0.5,  0.5,  0.5,    // top-right
-    -0.5,  0.5,  0.5,    // top-left
-    -0.5, -0.5,  0.5,    // bottom-left
-    // Left face
-    -0.5,  0.5,  0.5,    // top-right
-    -0.5,  0.5, -0.5,    // top-left
-    -0.5, -0.5, -0.5,    // bottom-left
-    -0.5, -0.5, -0.5,    // bottom-left
-    -0.5, -0.5,  0.5,    // bottom-right
-    -0.5,  0.5,  0.5,    // top-right
-    // Right face
-     0.5,  0.5,  0.5,    // top-left
-     0.5, -0.5, -0.5,    // bottom-right
-     0.5,  0.5, -0.5,    // top-right         
-     0.5, -0.5, -0.5,    // bottom-right
-     0.5,  0.5,  0.5,    // top-left
-     0.5, -0.5,  0.5,    // bottom-left     
-    // Bottom face
-    -0.5, -0.5, -0.5,    // top-right
-     0.5, -0.5, -0.5,    // top-left
-     0.5, -0.5,  0.5,    // bottom-left
-     0.5, -0.5,  0.5,    // bottom-left
-    -0.5, -0.5,  0.5,    // bottom-right
-    -0.5, -0.5, -0.5,    // top-right
-    // Top face
-    -0.5,  0.5, -0.5,    // top-left
-     0.5,  0.5,  0.5,    // bottom-right
-     0.5,  0.5, -0.5,    // top-right     
-     0.5,  0.5,  0.5,    // bottom-right
-    -0.5,  0.5, -0.5,    // top-left
-    -0.5,  0.5,  0.5     // bottom-left  
+            var vertices = new Float32Array([   // 顶点坐标，坐标的顺序是逆时针的
+               1.0, 1.0, 1.0, -1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, -1.0, 1.0,    // v0-v1-v2-v3 front
+               1.0, 1.0, 1.0, 1.0, -1.0, 1.0, 1.0, -1.0, -1.0, 1.0, 1.0, -1.0,    // v0-v3-v4-v5 right
+               1.0, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, -1.0, -1.0, 1.0, 1.0,    // v0-v5-v6-v1 up
+              -1.0, 1.0, 1.0, -1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0,    // v1-v6-v7-v2 left
+              -1.0, -1.0, -1.0, 1.0, -1.0, -1.0, 1.0, -1.0, 1.0, -1.0, -1.0, 1.0,    // v7-v4-v3-v2 down
+               1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0     // v4-v7-v6-v5 back
             ]);
 
             var normals = new Float32Array([   // Normal
@@ -174,19 +130,19 @@
                0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0,    // v7-v4-v3-v2 down
                0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0     // v4-v7-v6-v5 back
             ]);
-
-            var indices = new Uint8Array([        // Indices of the vertices
-                20, 21, 22, 20, 22, 23,     // back
+            //索引的顺序为逆时针
+            var indices = new Uint8Array([ 
                0, 1, 2, 0, 2, 3,    // front
-                12, 13, 14, 12, 14, 15,    // left
                4, 5, 6, 4, 6, 7,    // right
-                 16, 17, 18, 16, 18, 19,    // down
-               8, 9, 10, 8, 10, 11    // up   
+               8, 9, 10, 8, 10, 11,    // up
+              12, 13, 14, 12, 14, 15,    // left
+              16, 17, 18, 16, 18, 19,    // down
+              20, 21, 22, 20, 22, 23     // back
             ]);
 
-            var o = new Object(); // Utilize Object to to return multiple buffer objects together
+            var o = new Object(); // 创建一个对象，用于附属所有需要用到的数据
 
-            // Write vertex information to buffer object
+            // 顶点数据
             o.vertexBuffer = initArrayBufferForLaterUse(gl, vertices, 3, gl.FLOAT);
             o.normalBuffer = initArrayBufferForLaterUse(gl, normals, 3, gl.FLOAT);
             o.texCoordBuffer = initArrayBufferForLaterUse(gl, texCoords, 2, gl.FLOAT);
@@ -195,88 +151,82 @@
 
             o.numIndices = indices.length;
 
-            // Unbind the buffer object
+            // 解绑缓冲区
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 
             return o;
         }
 
-        function initTextures(gl, program,url) {
-            var texture = gl.createTexture();   // Create a texture object
+        function initTextures(gl, program,url,i) {
+            var texture = gl.createTexture();   // 创建纹理对象
             if (!texture) {
-                console.log('Failed to create the texture object');
+                console.log('创建纹理对象失败');
                 return null;
             }
-
-            var image = new Image();  // Create a image object
-            if (!image) {
-                console.log('Failed to create the image object');
-                return null;
-            }
-            // Register the event handler to be called when image loading is completed
+            var image = new Image();
+            // 图片异步加载完成后，填充纹理数据
             image.onload = function () {
-                // Write the image data to texture object
-                gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);  // Flip the image Y coordinate
+                // 写入图像数据
+                gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);  
                 gl.activeTexture(gl.TEXTURE0);
                 gl.bindTexture(gl.TEXTURE_2D, texture);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
                 gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
                 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-
-                // Pass the texure unit 0 to u_Sampler
+                //设置采样器的纹理单元
                 gl.useProgram(program);
+                //将纹理单元赋值给采样器
                 gl.uniform1i(program.u_Sampler, 0);
-
-                gl.bindTexture(gl.TEXTURE_2D, null); // Unbind texture
+                gl.bindTexture(gl.TEXTURE_2D, null);
             };
 
-            // Tell the browser to load an Image
+            //图片路径
             image.src = url;
-
+            texture.index = i;
             return texture;
         }
+        //绘制盒子对象
+        function drawCubeObject(gl, program, o,texture, x, angle,scale, viewProjMatrix) {
+            if (program.a_Position != undefined && program.a_Position != null)
+                initAttributeVariable(gl, program.a_Position, o.vertexBuffer);
+            if (program.a_TexCoord != undefined && program.a_TexCoord != null)
+                initAttributeVariable(gl, program.a_TexCoord, o.texCoordBuffer);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);
 
-        function drawTexCube(gl, program, o, texture, x, angle, viewProjMatrix) {
-            gl.useProgram(program);   // Tell that this program object is used
+            if (texture) {
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_2D, texture);
+            }
+            drawCube(gl, program, o, x, angle,scale, viewProjMatrix);
 
-            // Assign the buffer objects and enable the assignment
-            initAttributeVariable(gl, program.a_Position, o.vertexBuffer);  // Vertex coordinates
-            initAttributeVariable(gl, program.a_Normal, o.normalBuffer);    // Normal
-            initAttributeVariable(gl, program.a_TexCoord, o.texCoordBuffer);// Texture coordinates
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer); // Bind indices
-
-            // Bind texture object to texture unit 0
-            gl.activeTexture(gl.TEXTURE0);
-            gl.bindTexture(gl.TEXTURE_2D, texture);
-
-            drawCube(gl, program, o, x, angle, viewProjMatrix); // Draw
         }
 
-        // Assign the buffer objects and enable the assignment
+
+        // 分配缓冲区数据
         function initAttributeVariable(gl, a_attribute, buffer) {
             gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
             gl.vertexAttribPointer(a_attribute, buffer.num, buffer.type, false, 0, 0);
             gl.enableVertexAttribArray(a_attribute);
         }
 
-        function drawCube(gl, program, o, x, angle, viewProjMatrix) {
-            // Coordinate transformation matrix
+        //绘制立方体对象
+        function drawCube(gl, program, o, x, angle,scale, viewProjMatrix) {
+            // 三大矩阵对象
             var g_modelMatrix = new Matrix4();
             var g_mvpMatrix = new Matrix4();
             var g_normalMatrix = new Matrix4();
-            // Calculate a model matrix
-            g_modelMatrix.setTranslate(x, 0.0, 0.0);
+            // 计算模型矩阵
             g_modelMatrix.rotate(20.0, 1.0, 0.0, 0.0);
             g_modelMatrix.rotate(angle, 0.0, 1.0, 0.0);
+            g_modelMatrix.scale(scale, scale, scale);
+            g_modelMatrix.translate(x, 0.1, 0.0);
 
-            // Calculate transformation matrix for normals and pass it to u_NormalMatrix
             g_normalMatrix.setInverseOf(g_modelMatrix);
             g_normalMatrix.transpose();
             gl.uniformMatrix4fv(program.u_NormalMatrix, false, g_normalMatrix.elements);
 
-            // Calculate model view projection matrix and pass it to u_MvpMatrix
             g_mvpMatrix.set(viewProjMatrix);
             g_mvpMatrix.multiply(g_modelMatrix);
             gl.uniformMatrix4fv(program.u_MvpMatrix, false, g_mvpMatrix.elements);
@@ -287,14 +237,14 @@
         function initArrayBufferForLaterUse(gl, data, num, type) {
             var buffer = gl.createBuffer();   // Create a buffer object
             if (!buffer) {
-                console.log('Failed to create the buffer object');
+                console.log('创建缓冲对象失败');
                 return null;
             }
-            // Write date into the buffer object
+            // 将数据写入缓冲区
             gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
             gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
 
-            // Keep the information necessary to assign to the attribute variable later
+            //配置必要参数
             buffer.num = num;
             buffer.type = type;
 
@@ -302,12 +252,12 @@
         }
 
         function initElementArrayBufferForLaterUse(gl, data, type) {
-            var buffer = gl.createBuffer();　  // Create a buffer object
+            var buffer = gl.createBuffer();　  // 创建缓冲对象
             if (!buffer) {
                 console.log('Failed to create the buffer object');
                 return null;
             }
-            // Write date into the buffer object
+            //写入缓冲区数据
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffer);
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, data, gl.STATIC_DRAW);
 
@@ -316,16 +266,26 @@
             return buffer;
         }
 
-        var ANGLE_STEP = 30;   // The increments of rotation angle (degrees)
+        //间隔时间为30毫秒
+        var ANGLE_STEP = 30;
 
-        var last = Date.now(); // Last time that this function was called
+        var last = Date.now();
+        //计算当前的旋转角度
         function animate(angle) {
-            var now = Date.now();   // Calculate the elapsed time
+            var now = Date.now();
             var elapsed = now - last;
             last = now;
-            // Update the current rotation angle (adjusted by the elapsed time)
             var newAngle = angle + (ANGLE_STEP * elapsed) / 1000.0;
             return newAngle % 360;
+        }
+        //选项按钮事件
+        function domEvent() {
+            cull_back.onclick = function (e) {
+                cull_face = 'BACK';
+            }
+            cull_front.onclick = function (e) {
+                cull_face = 'FRONT';
+            }
         }
     </script>
 </head>
@@ -334,6 +294,10 @@
         <canvas id="webgl" width="512" height="512">
             Please use a browser that supports "canvas"
         </canvas>
+    </div>
+    <div style="margin:0 auto;width:200px">
+        <input id='cull_back' type="radio" name="cull" checked="true">裁剪背面
+        <input id='cull_front' type="radio" name="cull">裁剪正面
     </div>
 </body>
 </html>

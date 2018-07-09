@@ -131,49 +131,49 @@
                 //gl.stencilMask(1);
 
                 //方法2，用深度测试实现
-                currentAngle = animate(currentAngle);  // Update current rotation angle
-                gl.clearColor(0.0, 0.0, 0.0, 1.0);
-                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
-                //画平面
-                gl.useProgram(ObjectProgram);
-                drawPlaneObject(gl, ObjectProgram, plane, texturePlane, 0.0, currentAngle, viewProjMatrix);
-                gl.bindBuffer(gl.ARRAY_BUFFER, null);
-                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-
-                //画边线
-                gl.useProgram(singleColorProgram);
-                gl.disable(gl.DEPTH_TEST);
-                drawCubeObject(gl, singleColorProgram, cube, textureCube, 0.0, currentAngle, 1.05, viewProjMatrix);
-                gl.bindBuffer(gl.ARRAY_BUFFER, null);
-                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-
-                //画盒子
-                gl.useProgram(ObjectProgram);   // Tell that this program object is used
-                gl.enable(gl.DEPTH_TEST);
-                drawCubeObject(gl, ObjectProgram, cube, textureCube, 0.0, currentAngle, 1.0, viewProjMatrix);
-
-                //方法3
                 //currentAngle = animate(currentAngle);  // Update current rotation angle
                 //gl.clearColor(0.0, 0.0, 0.0, 1.0);
                 //gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
+                ////画平面
+                //gl.useProgram(ObjectProgram);
+                //drawPlaneObject(gl, ObjectProgram, plane, texturePlane, 0.0, currentAngle, viewProjMatrix);
+                //gl.bindBuffer(gl.ARRAY_BUFFER, null);
+                //gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 
-                //gl.enable(gl.CULL_FACE);								//开启剪裁
-                //gl.cullFace(gl.BACK);									//剪裁背面
-                //gl.frontFace(gl.CW);
+                ////画边线
                 //gl.useProgram(singleColorProgram);
+                //gl.disable(gl.DEPTH_TEST);
                 //drawCubeObject(gl, singleColorProgram, cube, textureCube, 0.0, currentAngle, 1.05, viewProjMatrix);
                 //gl.bindBuffer(gl.ARRAY_BUFFER, null);
                 //gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
 
-                //gl.frontFace(gl.CCW);
                 ////画盒子
                 //gl.useProgram(ObjectProgram);   // Tell that this program object is used
+                //gl.enable(gl.DEPTH_TEST);
                 //drawCubeObject(gl, ObjectProgram, cube, textureCube, 0.0, currentAngle, 1.0, viewProjMatrix);
 
-                //gl.disable(gl.CULL_FACE);
-                //drawPlaneObject(gl, ObjectProgram, plane, texturePlane, 0.0, currentAngle, viewProjMatrix);
-                //gl.bindBuffer(gl.ARRAY_BUFFER, null);
-                //gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+                //方法3
+                currentAngle = animate(currentAngle);  // Update current rotation angle
+                gl.clearColor(0.0, 0.0, 0.0, 1.0);
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
+
+                gl.enable(gl.CULL_FACE);								//开启剪裁
+                gl.cullFace(gl.BACK);									//剪裁背面
+                gl.frontFace(gl.CW);
+                gl.useProgram(singleColorProgram);
+                drawCubeObject(gl, singleColorProgram, cube, textureCube, 0.0, currentAngle, 1.05, viewProjMatrix);
+                gl.bindBuffer(gl.ARRAY_BUFFER, null);
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+                gl.frontFace(gl.CCW);
+                //画盒子
+                gl.useProgram(ObjectProgram);   // Tell that this program object is used
+                drawCubeObject(gl, ObjectProgram, cube, textureCube, 0.0, currentAngle, 1.0, viewProjMatrix);
+
+                gl.disable(gl.CULL_FACE);
+                drawPlaneObject(gl, ObjectProgram, plane, texturePlane, 0.0, currentAngle, viewProjMatrix);
+                gl.bindBuffer(gl.ARRAY_BUFFER, null);
+                gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
                 requestAnimationFrame(tick, canvas);
             };
             tick();
@@ -389,7 +389,7 @@
             var g_mvpMatrix = new Matrix4();
             var g_normalMatrix = new Matrix4();
             // Calculate a model matrix
-            g_modelMatrix.setTranslate(x, 0.1, 0.0);
+            g_modelMatrix.setTranslate(x, 0.2, 0.0);
             g_modelMatrix.rotate(20.0, 1.0, 0.0, 0.0);
             g_modelMatrix.rotate(angle, 0.0, 1.0, 0.0);
             g_modelMatrix.scale(scale, scale, scale);
