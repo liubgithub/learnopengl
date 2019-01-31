@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>骨骼动画</title>
+    <script src="../lib/webgl-utils.js"></script>
+    <script src="../lib/webgl-debug.js"></script>
+    <script src="../lib/cuon-utils.js"></script>
+    <script src="../lib/cuon-matrix.js"></script>
+    <script type="text/javascript">
+        // LightedCube.js (c) 2012 matsuda
+        // Vertex shader program
+        var vs =
+          `
+          attribute vec4 a_position;
+                attribute vec4 a_weight;
+                attribute vec4 a_boneNdx;
+
+                uniform mat4 projection;
+                uniform mat4 view;
+                uniform mat4 bones[4];
+                uniform mat4 u_MvpMatrix;
+                void main() {
+
+                gl_Position = u_MvpMatrix * (bones[int(a_boneNdx[0])] * a_position * a_weight[0] +
+                 bones[int(a_boneNdx[1])] * a_position * a_weight[1] +
+                 bones[int(a_boneNdx[2])] * a_position * a_weight[2] +
+                 bones[int(a_boneNdx[3])] * a_position * a_weight[3]);
+
+        }
+        `;
+        // Fragment shader program
+        var fs =
+        `#ifdef GL_ES
+          precision mediump float;
+          #endif
+          uniform vec4 color;
+            void main () {
+            gl_FragColor = color;
+        }`;
+
+        var vs2 =
+            `attribute vec4 a_position;
+            uniform mat4 projection;
+            uniform mat4 view;
+            uniform mat4 model;
+            void main() {
+                gl_Position = projection * view * model * a_position;
+            }`;
+
+        var cameraPos, light_Pos;
+        var arrays = {
+            position: {
+            numComponents: 2,
+            data: [
+            0,  1,  // 0
+            0, -1,  // 1
+            2,  1,  // 2
+            2, -1,  // 3
+            4,  1,  // 4
+            4, -1,  // 5
+            6,  1,  // 6
+            6, -1,  // 7
+            8,  1,  // 8
+            8, -1,  // 9
+            ],
+            },
+            boneNdx: {
+            numComponents: 4,
+            data: [
+                0, 0, 0, 0,  // 0
+                0, 0, 0, 0,  // 1
+                0, 1, 0, 0,  // 2
+                0, 1, 0, 0,  // 3
+                1, 0, 0, 0,  // 4
+                1, 0, 0, 0,  // 5
+                1, 2, 0, 0,  // 6
+                1, 2, 0, 0,  // 7
+                2, 0, 0, 0,  // 8
+                2, 0, 0, 0,  // 9
+            ],
+            },
+            weight: {
+            numComponents: 4,
+            data: [
+            1, 0, 0, 0,  // 0
+            1, 0, 0, 0,  // 1
+            .5,.5, 0, 0,  // 2
+            .5,.5, 0, 0,  // 3
+            1, 0, 0, 0,  // 4
+            1, 0, 0, 0,  // 5
+            .5,.5, 0, 0,  // 6
+            .5,.5, 0, 0,  // 7
+            1, 0, 0, 0,  // 8
+            1, 0, 0, 0,  // 9
+            ],
+            },
+
+            indices: {
+            numComponents: 2,
+            data: [
+                0, 1,
+                0, 2,
+                1, 3,
+                2, 3, //
+                2, 4,
+                3, 5,
+                4, 5,
+                4, 6,
+                5, 7, //
+                6, 7,
+                6, 8,
+                7, 9,
+                8, 9,
+            ],
+            },
+        };
+        function main() {
+            // Retrieve <canvas> element
+            var canvas = document.getElementById('webgl');
+
+            // Get the rendering context for WebGL
+            var gl = getWebGLContext(canvas);
+            if (!gl) {
+                console.log('Failed to get the rendering context for WebGL');
+                return;
+            }
+            
+            var vsfsProgram = createProgram(gl, vs, fs);
+            vsfsProgram.a_boneNdx = gl.getAttribLocation(vsfsProgram, 'a_boneNdx');
+            vsfsProgram.a_position = gl.getAttribLocation(vsfsProgram, 'a_position');
+            vsfsProgram.a_weight = gl.getAttribLocation(vsfsProgram, 'a_weight');
+            vsfsProgram.u_bones = gl.getUniformLocation(vsfsProgram, 'bones');
+            vsfsProgram.u_color = gl.getUniformLocation(vsfsProgram, 'color');
+            vsfsProgram.u_view = gl.getUniformLocation(vsfsProgram, 'view');
+            vsfsProgram.u_projection = gl.getUniformLocation(vsfsProgram, 'projection');
+            vsfsProgram.u_MvpMatrix = gl.getUniformLocation(vsfsProgram, 'u_MvpMatrix');
+            // Initialize shaders
+            if (!vsfsProgram) {
+                console.log('Failed to intialize shaders.');
+                return;
+            }
+
+            var numBones = 4;
+            var boneArray = new Float32Array(numBones * 16);
+
+            var boneMatrices = [];
+            var bones = [];
+            var bindBones = [];
+            for(var i = 0; i < numBones; i++) {
+                boneMatrices.push(new Float32Array(boneArray.buffer, i * 4 * 16, 16));
+                bindPose.push(new Matrix4());
+                bones.push(new Matrix4());
+            }
+            computeBoneMatrices(bindPose, 0);
+            var bindPoseInv = bindPose.map(function(m){
+                return m.invert();
+            })
+            // Set the vertex information
+            var hand = initVertexBuffers(gl);
+
+            // Set the clear color and enable the depth test
+            gl.enable(gl.DEPTH_TEST);
+            //gl.enable(gl.BLEND);
+            //gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+            gl.clearColor(0.0, 0.0, 0.0, 1.0);
+            // Calculate the view projection matrix
+            cameraPos = [0.0, 5.0, 20.0];
+            var viewProjMatrix = new Matrix4();
+            viewProjMatrix.setPerspective(45.0, canvas.width / canvas.height, 1.0, 100.0);
+            viewProjMatrix.lookAt(cameraPos[0], cameraPos[1], cameraPos[2], 0, 0, 0, 0, 1, 0);
+
+            // Start drawing
+            var currentAngle = 0.0; // Current rotation angle (degrees)
+            gl.useProgram(vsfsProgram);
+            var tick = function (time) {
+                //currentAngle = animate(currentAngle);  // Update current rotation angle
+                gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
+                // Draw the light source
+                var t = time * 0.001;
+                computeBoneMatrices(bones, angle);
+                var angle = Math.sin(t) * 0.8;
+                drawHand(gl, vsfsProgram, hand, 2.0, currentAngle, viewProjMatrix);
+                requestAnimationFrame(tick, canvas);
+            };
+            tick();
+        }
+        
+        function computeBoneMatrices(bones, angle) {
+            bones[0].rotate(angle, 0.0, 0.0, 1.0);
+            bones[0].translate(4, 0, 0);
+            bones[1].rotate(angle, 0, 0, 1);
+            bones[1].translate(4, 0, 0);
+            bones[2].rotate(angle, 0, 0, 1);
+        }
+
+        function initVertexBuffers(gl) {
+            var vertices = new Float32Array(arrays.position.data);
+
+            var indices = new Uint8Array(arrays.indices.data);
+
+            var o = new Object(); // Utilize Object to to return multiple buffer objects together
+
+            // Write vertex information to buffer object
+            o.vertexBuffer = initArrayBufferForLaterUse(gl, vertices, 2, gl.FLOAT);
+            o.indexBuffer = initElementArrayBufferForLaterUse(gl, indices, gl.UNSIGNED_BYTE);
+            if (!o.vertexBuffer  || !o.indexBuffer) return null;
+
+            o.numIndices = indices.length;
+
+            // Unbind the buffer object
+            gl.bindBuffer(gl.ARRAY_BUFFER, null);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
+
+            return o;
+        }
+
+        function drawHand(gl, program, o, x, angle, viewProjMatrix) {
+            // Assign the buffer objects and enable the assignment
+            initAttributeVariable(gl, program.a_position, o.vertexBuffer); // Vertex coordinates
+            //initAttributeVariable(gl, program.a_Normal, o.normalBuffer);   // Normal
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);  // Bind indices
+
+            drawHandObject(gl, program, o, x, angle, viewProjMatrix);   // Draw
+        }
+        
+        function drawHandObject(gl, program, o, x, angle, viewProjMatrix) {
+            // Coordinate transformation matrix
+            var g_modelMatrix = new Matrix4();
+            var g_mvpMatrix = new Matrix4();
+            var g_normalMatrix = new Matrix4();
+            // Calculate a model matrix
+            g_modelMatrix.translate(-3, 0, 0);
+            // g_modelMatrix.setTranslate(x, 0.0, 0.0);
+            g_modelMatrix.rotate(0.0, 1.0, 0.0, 0.0);
+            g_modelMatrix.rotate(angle, 0.0, 1.0, 0.0);
+            g_modelMatrix.scale(1.0, 1.0, 1.0);
+
+            // Calculate model view projection matrix and pass it to u_MvpMatrix
+            g_mvpMatrix.set(viewProjMatrix);
+            g_mvpMatrix.multiply(g_modelMatrix);
+            gl.uniformMatrix4fv(program.u_MvpMatrix, false, g_mvpMatrix.elements);
+            gl.uniform4f(program.u_color, 1.0, 0.0, 0.0, 1.0);
+
+            gl.drawElements(gl.LINES, o.numIndices, o.indexBuffer.type, 0);   // Draw
+        }
+
+        // Assign the buffer objects and enable the assignment
+        function initAttributeVariable(gl, a_attribute, buffer) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+            gl.vertexAttribPointer(a_attribute, buffer.num, buffer.type, false, 0, 0);
+            gl.enableVertexAttribArray(a_attribute);
+        }
+
+        function initArrayBufferForLaterUse(gl, data, num, type) {
+            var buffer = gl.createBuffer();   // Create a buffer object
+            if (!buffer) {
+                console.log('Failed to create the buffer object');
+                return null;
+            }
+            // Write date into the buffer object
+            gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+
+            // Keep the information necessary to assign to the attribute variable later
+            buffer.num = num;
+            buffer.type = type;
+
+            return buffer;
+        }
+        function initElementArrayBufferForLaterUse(gl, data, type) {
+            var buffer = gl.createBuffer();　  // Create a buffer object
+            if (!buffer) {
+                console.log('Failed to create the buffer object');
+                return null;
+            }
+            // Write date into the buffer object
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, data, gl.STATIC_DRAW);
+
+            buffer.type = type;
+
+            return buffer;
+        }
+
+        var ANGLE_STEP = 30;   // The increments of rotation angle (degrees)
+
+        var last = Date.now(); // Last time that this function was called
+        function animate(angle) {
+            var now = Date.now();   // Calculate the elapsed time
+            var elapsed = now - last;
+            last = now;
+            // Update the current rotation angle (adjusted by the elapsed time)
+            var newAngle = angle + (ANGLE_STEP * elapsed) / 1000.0;
+            return newAngle % 360;
+        }
+    </script>
+</head>
+<body onload="main()">
+    <canvas id="webgl" width="512" height="512">
+        Please use a browser that supports "canvas"
+    </canvas>
+</body>
+</html>
