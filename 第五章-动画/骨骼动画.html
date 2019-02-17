@@ -6,7 +6,8 @@
     <script src="../lib/webgl-utils.js"></script>
     <script src="../lib/webgl-debug.js"></script>
     <script src="../lib/cuon-utils.js"></script>
-    <script src="../lib/cuon-matrix.js"></script>
+    <!-- <script src="../lib/cuon-matrix.js"></script> -->
+    <script src="resources/m4.js"></script>
     <script type="text/javascript">
         // LightedCube.js (c) 2012 matsuda
         // Vertex shader program
@@ -146,15 +147,15 @@
 
             var boneMatrices = [];
             var bones = [];
-            var bindBones = [];
+            var bindPose = [];
             for(var i = 0; i < numBones; i++) {
                 boneMatrices.push(new Float32Array(boneArray.buffer, i * 4 * 16, 16));
-                bindPose.push(new Matrix4());
-                bones.push(new Matrix4());
+                bindPose.push(m4.identity());
+                bones.push(m4.identity());
             }
             computeBoneMatrices(bindPose, 0);
             var bindPoseInv = bindPose.map(function(m){
-                return m.invert();
+                return m4.invert(m);
             })
             // Set the vertex information
             var hand = initVertexBuffers(gl);
@@ -165,11 +166,17 @@
             //gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
             gl.clearColor(0.0, 0.0, 0.0, 1.0);
             // Calculate the view projection matrix
-            cameraPos = [0.0, 5.0, 20.0];
-            var viewProjMatrix = new Matrix4();
-            viewProjMatrix.setPerspective(45.0, canvas.width / canvas.height, 1.0, 100.0);
-            viewProjMatrix.lookAt(cameraPos[0], cameraPos[1], cameraPos[2], 0, 0, 0, 0, 1, 0);
-
+            var cameraPos = [0.0, 5.0, 20.0];
+            var target = [0.0, 0.0, 0.0];
+            var up = [0, 1, 0];
+            var view = m4.translation(1.0, 0, 0)
+            // var viewProjMatrix = new Matrix4();
+            // viewProjMatrix.setPerspective(45.0, canvas.width / canvas.height, 1.0, 100.0);
+            // viewProjMatrix.lookAt(cameraPos[0], cameraPos[1], cameraPos[2], 0, 0, 0, 0, 1, 0);
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+            var perspective = m4.identity();
+            m4.perspective(45.0, canvas.width/canvas.height, 1.0, 100.0, perspective);
+            m4.lookAt(cameraPos, target, up, perspective);
             // Start drawing
             var currentAngle = 0.0; // Current rotation angle (degrees)
             gl.useProgram(vsfsProgram);
@@ -178,20 +185,26 @@
                 gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); // Clear color and depth buffers
                 // Draw the light source
                 var t = time * 0.001;
-                computeBoneMatrices(bones, angle);
                 var angle = Math.sin(t) * 0.8;
-                drawHand(gl, vsfsProgram, hand, 2.0, currentAngle, viewProjMatrix);
+                computeBoneMatrices(bones, angle);
+                bones.forEach(function(bone, ndx){
+                    m4.multiply(bone, bindPoseInv[ndx], boneMatrices[ndx]);
+                });
+                // drawHand(gl, vsfsProgram, hand, 2.0, currentAngle, viewProjMatrix);
+                drawHand(gl, vsfsProgram, hand, 2.0, currentAngle, perspective, view);
                 requestAnimationFrame(tick, canvas);
             };
             tick();
         }
         
         function computeBoneMatrices(bones, angle) {
-            bones[0].rotate(angle, 0.0, 0.0, 1.0);
-            bones[0].translate(4, 0, 0);
-            bones[1].rotate(angle, 0, 0, 1);
-            bones[1].translate(4, 0, 0);
-            bones[2].rotate(angle, 0, 0, 1);
+            var m = m4.identity();
+            m4.zRotate(m, angle, bones[0]);
+            m4.translate(bones[0], 4, 0, 0, m);
+            m4.zRotate(m, angle, bones[1]);
+            m4.translate(bones[1], 4, 0, 0, m);
+            m4.zRotate(m, angle, bones[2]);
+            // bones[3] is not used
         }
 
         function initVertexBuffers(gl) {
@@ -215,33 +228,35 @@
             return o;
         }
 
-        function drawHand(gl, program, o, x, angle, viewProjMatrix) {
+        function drawHand(gl, program, o, x, angle, perspective, view) {
             // Assign the buffer objects and enable the assignment
             initAttributeVariable(gl, program.a_position, o.vertexBuffer); // Vertex coordinates
             //initAttributeVariable(gl, program.a_Normal, o.normalBuffer);   // Normal
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);  // Bind indices
 
-            drawHandObject(gl, program, o, x, angle, viewProjMatrix);   // Draw
+            drawHandObject(gl, program, o, x, angle, perspective, view);   // Draw
         }
         
-        function drawHandObject(gl, program, o, x, angle, viewProjMatrix) {
-            // Coordinate transformation matrix
-            var g_modelMatrix = new Matrix4();
-            var g_mvpMatrix = new Matrix4();
-            var g_normalMatrix = new Matrix4();
-            // Calculate a model matrix
-            g_modelMatrix.translate(-3, 0, 0);
-            // g_modelMatrix.setTranslate(x, 0.0, 0.0);
-            g_modelMatrix.rotate(0.0, 1.0, 0.0, 0.0);
-            g_modelMatrix.rotate(angle, 0.0, 1.0, 0.0);
-            g_modelMatrix.scale(1.0, 1.0, 1.0);
+        function drawHandObject(gl, program, o, x, angle, perspective, view) {
+            // // Coordinate transformation matrix
+            // var g_modelMatrix = new Matrix4();
+            // var g_mvpMatrix = new Matrix4();
+            // var g_normalMatrix = new Matrix4();
+            // // Calculate a model matrix
+            // g_modelMatrix.translate(-3, 0, 0);
+            // // g_modelMatrix.setTranslate(x, 0.0, 0.0);
+            // g_modelMatrix.rotate(0.0, 1.0, 0.0, 0.0);
+            // g_modelMatrix.rotate(angle, 0.0, 1.0, 0.0);
+            // g_modelMatrix.scale(1.0, 1.0, 1.0);
 
-            // Calculate model view projection matrix and pass it to u_MvpMatrix
-            g_mvpMatrix.set(viewProjMatrix);
-            g_mvpMatrix.multiply(g_modelMatrix);
-            gl.uniformMatrix4fv(program.u_MvpMatrix, false, g_mvpMatrix.elements);
+            // // Calculate model view projection matrix and pass it to u_MvpMatrix
+            // g_mvpMatrix.set(viewProjMatrix);
+            // g_mvpMatrix.multiply(g_modelMatrix);
+            // gl.uniformMatrix4fv(program.u_MvpMatrix, false, g_mvpMatrix.elements);
+            // gl.uniform4f(program.u_color, 1.0, 0.0, 0.0, 1.0);
+
             gl.uniform4f(program.u_color, 1.0, 0.0, 0.0, 1.0);
-
+            gl.uniform4f(program.u_color, )
             gl.drawElements(gl.LINES, o.numIndices, o.indexBuffer.type, 0);   // Draw
         }
 
