@@ -7,15 +7,16 @@
     <script src="../lib/webgl-debug.js"></script>
     <script src="../lib/cuon-utils.js"></script>
     <!-- <script src="../lib/cuon-matrix.js"></script> -->
-    <script src="resources/m4.js"></script>
+    <script src="../resources/m4.js"></script>
     <script type="text/javascript">
         // LightedCube.js (c) 2012 matsuda
         // Vertex shader program
         var vs =
           `
-          attribute vec4 a_position;
-                attribute vec4 a_weight;
+                attribute vec4 a_position;
                 attribute vec4 a_boneNdx;
+                attribute vec4 a_weight;
+                
 
                 uniform mat4 projection;
                 uniform mat4 view;
@@ -23,7 +24,7 @@
                 uniform mat4 u_MvpMatrix;
                 void main() {
 
-                gl_Position = u_MvpMatrix * (bones[int(a_boneNdx[0])] * a_position * a_weight[0] +
+                gl_Position = projection * view * (bones[int(a_boneNdx[0])] * a_position * a_weight[0] +
                  bones[int(a_boneNdx[1])] * a_position * a_weight[1] +
                  bones[int(a_boneNdx[2])] * a_position * a_weight[2] +
                  bones[int(a_boneNdx[3])] * a_position * a_weight[3]);
@@ -155,7 +156,7 @@
             }
             computeBoneMatrices(bindPose, 0);
             var bindPoseInv = bindPose.map(function(m){
-                return m4.invert(m);
+                return m4.inverse(m);
             })
             // Set the vertex information
             var hand = initVertexBuffers(gl);
@@ -175,7 +176,7 @@
             // viewProjMatrix.lookAt(cameraPos[0], cameraPos[1], cameraPos[2], 0, 0, 0, 0, 1, 0);
             gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
             var perspective = m4.identity();
-            m4.perspective(45.0, canvas.width/canvas.height, 1.0, 100.0, perspective);
+            var projection = m4.perspective(45.0, canvas.width/canvas.height, 1.0, 100.0, perspective);
             m4.lookAt(cameraPos, target, up, perspective);
             // Start drawing
             var currentAngle = 0.0; // Current rotation angle (degrees)
@@ -190,8 +191,9 @@
                 bones.forEach(function(bone, ndx){
                     m4.multiply(bone, bindPoseInv[ndx], boneMatrices[ndx]);
                 });
+
                 // drawHand(gl, vsfsProgram, hand, 2.0, currentAngle, viewProjMatrix);
-                drawHand(gl, vsfsProgram, hand, 2.0, currentAngle, perspective, view);
+                drawHand(gl, vsfsProgram, hand, 2.0, currentAngle, projection, view);
                 requestAnimationFrame(tick, canvas);
             };
             tick();
@@ -211,12 +213,16 @@
             var vertices = new Float32Array(arrays.position.data);
 
             var indices = new Uint8Array(arrays.indices.data);
-
+            
+            var boneNdx = new Uint8Array(arrays.boneNdx.data);
+            var weight = new Uint8Array(arrays.weight.data);
             var o = new Object(); // Utilize Object to to return multiple buffer objects together
 
             // Write vertex information to buffer object
             o.vertexBuffer = initArrayBufferForLaterUse(gl, vertices, 2, gl.FLOAT);
             o.indexBuffer = initElementArrayBufferForLaterUse(gl, indices, gl.UNSIGNED_BYTE);
+            o.boneNdxBuffer = initArrayBufferForLaterUse(gl, boneNdx, 4, gl.FLOAT);
+            o.weightBuffer = initArrayBufferForLaterUse(gl, weight, 4, gl.FLOAT);
             if (!o.vertexBuffer  || !o.indexBuffer) return null;
 
             o.numIndices = indices.length;
@@ -231,13 +237,15 @@
         function drawHand(gl, program, o, x, angle, perspective, view) {
             // Assign the buffer objects and enable the assignment
             initAttributeVariable(gl, program.a_position, o.vertexBuffer); // Vertex coordinates
+            initAttributeVariable(gl, program.a_boneNdx, o.boneNdxBuffer); 
+            initAttributeVariable(gl, program.a_weight, o.weightBuffer);
             //initAttributeVariable(gl, program.a_Normal, o.normalBuffer);   // Normal
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);  // Bind indices
 
             drawHandObject(gl, program, o, x, angle, perspective, view);   // Draw
         }
         
-        function drawHandObject(gl, program, o, x, angle, perspective, view) {
+        function drawHandObject(gl, program, o, x, angle, projection, view) {
             // // Coordinate transformation matrix
             // var g_modelMatrix = new Matrix4();
             // var g_mvpMatrix = new Matrix4();
@@ -254,9 +262,10 @@
             // g_mvpMatrix.multiply(g_modelMatrix);
             // gl.uniformMatrix4fv(program.u_MvpMatrix, false, g_mvpMatrix.elements);
             // gl.uniform4f(program.u_color, 1.0, 0.0, 0.0, 1.0);
-
+            
             gl.uniform4f(program.u_color, 1.0, 0.0, 0.0, 1.0);
-            gl.uniform4f(program.u_color, )
+            gl.uniformMatrix4fv(program.u_projection, false, projection);
+            gl.uniformMatrix4fv(program.u_view, false, view);
             gl.drawElements(gl.LINES, o.numIndices, o.indexBuffer.type, 0);   // Draw
         }
 
