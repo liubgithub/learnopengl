@@ -21,7 +21,6 @@
                 uniform mat4 projection;
                 uniform mat4 model;
                 uniform mat4 bones[4];
-                uniform mat4 u_MvpMatrix;
                 void main() {
 
                 gl_Position = projection * model * (bones[int(a_boneNdx[0])] * a_position * a_weight[0] +
@@ -146,15 +145,14 @@
                 console.log('Failed to intialize shaders.');
                 return;
             }
-
             var numBones = 4;
             var boneArray = new Float32Array(numBones * 16);
 
-            var boneMatrices = [];
+            //var boneMatrices = [];
             var bones = [];
             var bindPose = [];
             for(var i = 0; i < numBones; i++) {
-                boneMatrices.push(new Float32Array(boneArray.buffer, i * 4 * 16, 16));
+                //boneMatrices.push(new Float32Array(boneArray.buffer, i * 4 * 16, 16));
                 bindPose.push(m4.identity());
                 bones.push(m4.identity());
             }
@@ -171,10 +169,10 @@
             //gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
             gl.clearColor(0.0, 0.0, 0.0, 1.0);
             // Calculate the view projection matrix
-            var cameraPos = [2.0, 1.0, 0.0];
-            var target = [-2.0, 0.0, 0.0];
+            var cameraPos = [6.0, 0.0,12.0];
+            var target = [0, 0.0, 0.0];
             var up = [0, 1, 0];
-            var model = m4.translation(0, 0, 0);
+            var model = m4.translation(-6, 0, 0);
             // var viewProjMatrix = new Matrix4();
             // viewProjMatrix.setPerspective(45.0, canvas.width / canvas.height, 1.0, 100.0);
             // viewProjMatrix.lookAt(cameraPos[0], cameraPos[1], cameraPos[2], 0, 0, 0, 0, 1, 0);
@@ -183,8 +181,11 @@
             // const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
             // m4.orthographic(-aspect * 10, aspect * 10, -10, 10, -1, 1, projection);
             const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
-            var projection = m4.perspective(45.0, aspect, 0.1, 1000.0, []);
-            var view = m4.lookAt(cameraPos, target, up, []);
+            // Compute the camera's matrix using look at.
+            const camera = m4.lookAt(cameraPos, target, up);
+            const projection = m4.perspective(Math.PI / 4, aspect, 1, 100);
+            // Make a view matrix from the camera matrix.
+            const view = m4.inverse(camera);
             // m4.inverse(view);
             var pvMatrix = m4.multiply(projection, view, []);
             // Start drawing
@@ -197,9 +198,9 @@
                 var t = time * 0.001;
                 var angle = Math.sin(t) * 0.8;
                 computeBoneMatrices(bones, angle);
-                bones.forEach(function(bone, ndx){
-                    m4.multiply(bone, bindPoseInv[ndx], boneMatrices[ndx]);
-                });
+                // bones.forEach(function(bone, ndx){
+                //     m4.multiply(bone, bindPoseInv[ndx], boneMatrices[ndx]);
+                // });
 
                 // drawHand(gl, vsfsProgram, hand, 2.0, currentAngle, viewProjMatrix);
                 drawHand(gl, vsfsProgram, hand, 2.0, currentAngle, pvMatrix, model, bones);
@@ -334,7 +335,7 @@
     </script>
 </head>
 <body onload="main()">
-    <canvas id="webgl" width="512" height="512">
+    <canvas id="webgl" width="1024" height="1024">
         Please use a browser that supports "canvas"
     </canvas>
 </body>
