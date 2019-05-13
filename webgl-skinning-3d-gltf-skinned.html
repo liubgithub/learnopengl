@@ -24,7 +24,6 @@ uniform sampler2D u_jointTexture;
 uniform float u_numJoints;
 
 varying vec3 v_normal;
-
 // these offsets assume the texture is 4 pixels across
 #define ROW0_U ((0.5 + 0.0) / 4.)
 #define ROW1_U ((0.5 + 1.0) / 4.)
@@ -194,6 +193,7 @@ async function main() {
         this.parent = parent;
       }
     }
+    //
     updateWorldMatrix(parentWorldMatrix) {
       const source = this.source;
       if (source) {

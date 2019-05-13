@@ -78,6 +78,7 @@
            skybox_program.a_position = gl.getAttribLocation(skybox_program, 'a_position');
            skybox_program.a_color = gl.getAttribLocation(skybox_program, 'a_color');
            skybox_program.u_matrix = gl.getUniformLocation(skybox_program, 'u_matrix');
+           skybox_program.u_sampler = gl.getUniformLocation(skybox_program, 'u_sampler');
            // 立方体着色器程序对象
            cube_program = createProgram(gl, cube_vs, cube_fs);
            // 着色器变量地址存到程序对象的属性中
@@ -309,7 +310,6 @@
 
        function initFBO() {
            var frameBuffer = gl.createFramebuffer();
-
            var texture = gl.createTexture();
            //TEXTURE_CUBE_MAP为立方体纹理贴图目标
            gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);

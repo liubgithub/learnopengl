@@ -9,23 +9,6 @@
     <script src="../lib/cuon-matrix.js"></script>
     <script type="text/javascript">
         // LightedCube.js (c) 2012 matsuda
-        // Vertex shader program
-        var _VSHADER_SOURCE =
-          `attribute vec4 a_Position;
-           attribute vec4 a_Normal;        // Normal
-           varying vec4 v_FragPos;
-           varying vec3 v_Normal;
-           attribute vec2 a_TexCoord;
-           varying vec2 v_TextCoords;
-           uniform mat4 u_MvpMatrix;
-           uniform mat4 u_normalMatrix;   //transpose(inverse(u_ModelMatrix))这个过程在js里算的
-           uniform mat4 u_ModelMatrix;    // Model matrix
-           void main() {
-            v_FragPos = u_ModelMatrix * a_Position;
-            v_Normal =vec3(-1.0) * normalize(vec3(u_normalMatrix * a_Normal));
-            v_TextCoords = a_TexCoord;
-             gl_Position = u_MvpMatrix * a_Position;
-        }`;
         //法线贴图的shader
         var VSHADER_SOURCE =
         `
@@ -125,44 +108,6 @@
                 //gl_FragColor = vec4(diff,diff,diff, 1.0);
             }
           `;
-        // Fragment shader program
-        var _FSHADER_SOURCE =
-          `#ifdef GL_ES
-          precision mediump float;
-          #endif
-          varying vec3 v_Normal;
-          varying vec4 v_FragPos;
-          varying vec2 v_TextCoords;
-
-          uniform vec3 u_lightPos;
-          uniform vec3 u_viewPos;
-          uniform vec3 u_lightColor;
-          //uniform vec3 u_objectColor;
-
-          uniform sampler2D u_Sampler;
-          void main() {
-            //ambient 环境光
-            float ambientStrength = 0.05;
-            vec3 ambient = ambientStrength * u_lightColor*texture2D(u_Sampler, v_TextCoords).rgb;
-          //diffuse 漫反射
-            vec3 norm = normalize(v_Normal);
-            vec3 lightDir = vec3(normalize(u_lightPos - vec3(v_FragPos)));
-            float diff = max(dot(norm, lightDir), 0.0);
-            vec3 diffuse = diff * u_lightColor*texture2D(u_Sampler, v_TextCoords).rgb;
-          // specular 镜面反射
-            float specularStrength = 0.6;
-            vec3 viewDir = vec3(normalize(u_viewPos - vec3(v_FragPos)));
-            //vec3 reflectDir = reflect(-lightDir, norm);
-            vec3 halfwayDir = normalize(lightDir+viewDir);
-            float spec = pow(max(dot(norm, halfwayDir), 0.0), 32.0);
-            //float spec = dot(viewDir, reflectDir);
-            vec3 specular = specularStrength *u_lightColor*spec;
-
-            //vec3 result = (ambient + diffuse + specular) * u_objectColor;
-            vec3 result = ambient +diffuse +specular;
-            //vec3 result = vec3(v_FragPos) * u_objectColor;
-            gl_FragColor = vec4(result, 1.0);
-          }`;
 
         var VSHADER_SOURCE_LIGHT =
             `attribute vec4 a_Position;
@@ -213,7 +158,7 @@
             planeProgram.a_Normal = gl.getAttribLocation(planeProgram, 'a_Normal');
             planeProgram.a_TexCoord = gl.getAttribLocation(planeProgram, 'a_TexCoord');
             planeProgram.aTangent = gl.getAttribLocation(planeProgram, 'aTangent');
-            planeProgram.aBitangent = gl.getAttribLocation(planeProgram, 'aBitangent');
+            // planeProgram.aBitangent = gl.getAttribLocation(planeProgram, 'aBitangent');
 
             planeProgram.u_MvpMatrix = gl.getUniformLocation(planeProgram, 'u_MvpMatrix');
             planeProgram.u_ModelMatrix = gl.getUniformLocation(planeProgram, 'u_ModelMatrix');
@@ -513,7 +458,7 @@
             initAttributeVariable(gl, program.a_Normal, 3, quadVerticesBuffer.num * fsize, 3 * fsize);// Normal
             initAttributeVariable(gl, program.a_TexCoord, 2, quadVerticesBuffer.num * fsize, 6 * fsize);   // Texture coordinates
             initAttributeVariable(gl, program.aTangent, 3, quadVerticesBuffer.num * fsize, 8 * fsize);   // tangent
-            initAttributeVariable(gl, program.aBitangent, 3, quadVerticesBuffer.num * fsize, 11 * fsize);   // bitangent
+            // initAttributeVariable(gl, program.aBitangent, 3, quadVerticesBuffer.num * fsize, 11 * fsize);   // bitangent
             //gl.bindBuffer(gl.ARRAY_BUFFER, o.texCoordBuffer);
             //gl.vertexAttribPointer(program.a_TexCoord, 2, gl.FLOAT, false, 0, 0);
             //gl.enableVertexAttribArray(program.a_TexCoord);

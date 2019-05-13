@@ -23,10 +23,10 @@
                 uniform mat4 bones[4];
                 void main() {
 
-                gl_Position = projection * model * (bones[int(a_boneNdx[0])] * a_position * a_weight[0] +
-                 bones[int(a_boneNdx[1])] * a_position * a_weight[1] +
-                 bones[int(a_boneNdx[2])] * a_position * a_weight[2] +
-                 bones[int(a_boneNdx[3])] * a_position * a_weight[3]);
+                gl_Position = projection * model * (bones[int(a_boneNdx[0])]  * a_weight[0] +
+                 bones[int(a_boneNdx[1])]  * a_weight[1] +
+                 bones[int(a_boneNdx[2])]  * a_weight[2] +
+                 bones[int(a_boneNdx[3])]  * a_weight[3]) * a_position;
                 // gl_Position = projection * model * a_position;
 
         }
@@ -150,16 +150,16 @@
 
             //var boneMatrices = [];
             var bones = [];
-            var bindPose = [];
+            //var bindPose = [];
             for(var i = 0; i < numBones; i++) {
                 //boneMatrices.push(new Float32Array(boneArray.buffer, i * 4 * 16, 16));
-                bindPose.push(m4.identity());
+                //bindPose.push(m4.identity());
                 bones.push(m4.identity());
             }
-            computeBoneMatrices(bindPose, 0);
-            var bindPoseInv = bindPose.map(function(m){
-                return m4.inverse(m);
-            })
+            //computeBoneMatrices(bindPose, 0);
+            // var bindPoseInv = bindPose.map(function(m){
+            //     return m4.inverse(m);
+            // })
             // Set the vertex information
             var hand = initVertexBuffers(gl);
 
@@ -215,8 +215,9 @@
             m4.translate(bones[0], 4, 0, 0, m);
             m4.zRotate(m, angle, bones[1]);
             m4.translate(bones[1], 4, 0, 0, m);
-            m4.zRotate(m, angle, bones[2]);
+            m4.zRotate(m, angle, bones[2]);                                                                                                                                                               
             // bones[3] is not used
+            // m4.zRotate(m, angle, bones[3]);
         }
 
         function initVertexBuffers(gl) {
@@ -240,7 +241,6 @@
             // Unbind the buffer object
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-
             return o;
         }
 
@@ -256,7 +256,7 @@
         }
         
         function drawHandObject(gl, program, o, x, angle, projection, model, bones) {
-            // // Coordinate transformation matrix
+            // // Coordinate transformation matrix                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
             // var g_modelMatrix = new Matrix4();
             // var g_mvpMatrix = new Matrix4();
             // var g_normalMatrix = new Matrix4();
@@ -315,9 +315,8 @@
             // Write date into the buffer object
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffer);
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, data, gl.STATIC_DRAW);
-
             buffer.type = type;
-
+            buffer.type = type;
             return buffer;
         }
 
