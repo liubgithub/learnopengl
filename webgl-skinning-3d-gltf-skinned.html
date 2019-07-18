@@ -389,7 +389,6 @@ async function main() {
           bufferInfo.indices = buffer;
           bufferInfo.elementType = accessor.componentType;
         }
-
         primitive.bufferInfo = bufferInfo;
 
         // save the material info for this primitive
@@ -418,6 +417,7 @@ async function main() {
       const {array} = getAccessorTypedArrayAndStride(gl, gltf, skin.inverseBindMatrices);
       return new Skin(joints, array);
     });
+
 
     // Add SkinRenderers to nodes with skins
     for (const {node, mesh, skinNdx} of skinNodes) {
@@ -465,6 +465,8 @@ async function main() {
   }
 
   const gltf = await loadGLTF('resources/models/killer_whale/whale.CYCLES.gltf');
+  
+  // const gltf = await loadGLTF('resources/models/CesiumMan/CesiumMan.gltf');
 
   function degToRad(deg) {
     return deg * Math.PI / 180;
@@ -482,50 +484,48 @@ async function main() {
       // get the original matrix
       const origMatrix = origMatrices.get(joint);
       // rotate it
-      const m = m4.xRotate(origMatrix, a);
+      let m = m4.xRotate(origMatrix, a);
       // decompose it back into position, rotation, scale
       // into the joint
       m4.decompose(m, joint.source.position, joint.source.rotation, joint.source.scale);
     }
   }
 
-  function render(time) {
-    time *= 0.001;  // convert to seconds
+  webglUtils.resizeCanvasToDisplaySize(gl.canvas);
+  gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
-    webglUtils.resizeCanvasToDisplaySize(gl.canvas);
-    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+  const fieldOfViewRadians = degToRad(60);
+  const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+  const projection = m4.perspective(fieldOfViewRadians, aspect, 1, 2000);
+
+  const cameraPosition = [10, 0, -5];
+  const target = [0, 0, -10];
+  // for debugging .. see article
+  // const cameraPosition = [5, 0, 5];
+  // const target = [0, 0, 0];
+  const up = [0, 1, 0];
+  // Compute the camera's matrix using look at.
+  const camera = m4.lookAt(cameraPosition, target, up);
+
+  // Make a view matrix from the camera matrix.
+  const view = m4.inverse(camera);
+  const sharedUniforms = {
+    u_lightDirection: m4.normalize([-1, 3, 5]),
+  };
+
+  function renderDrawables(node) {
+    for (const drawable of node.drawables) {
+        drawable.render(node, projection, view, sharedUniforms);
+    }
+  }
+
+  function render(time) {
+    time *= 0.001;// convert to seconds
     gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.CULL_FACE);
     gl.clearColor(.1, .1, .1, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-    const fieldOfViewRadians = degToRad(60);
-    const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
-    const projection = m4.perspective(fieldOfViewRadians, aspect, 1, 2000);
-
-    const cameraPosition = [10, 0, -5];
-    const target = [0, 0, -10];
-    // for debugging .. see article
-    // const cameraPosition = [5, 0, 5];
-    // const target = [0, 0, 0];
-    const up = [0, 1, 0];
-    // Compute the camera's matrix using look at.
-    const camera = m4.lookAt(cameraPosition, target, up);
-
-    // Make a view matrix from the camera matrix.
-    const view = m4.inverse(camera);
-
-    animSkin(gltf.skins[0], Math.sin(time) * .5);
-
-    const sharedUniforms = {
-      u_lightDirection: m4.normalize([-1, 3, 5]),
-    };
-
-    function renderDrawables(node) {
-      for (const drawable of node.drawables) {
-          drawable.render(node, projection, view, sharedUniforms);
-      }
-    }
+    // animSkin(gltf.skins[0], Math.sin(time) * .5);
 
     for (const scene of gltf.scenes) {
       // updatte all world matices in the scene.
@@ -533,7 +533,7 @@ async function main() {
       // walk the scene and render all renderables
       scene.root.traverse(renderDrawables);
     }
-
+    //
     requestAnimationFrame(render);
   }
   requestAnimationFrame(render);
