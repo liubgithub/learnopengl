@@ -55,6 +55,21 @@ void main() {
   //v_normal = a_JOINTS_0.xyz / (u_numJoints - 1.) * 2. - 1.;
 }
 </script>
+<script id="meshVS" type="notjs">
+  attribute vec4 a_POSITION;
+  attribute vec3 a_NORMAL;
+  
+  uniform mat4 u_projection;
+  uniform mat4 u_view;
+  uniform mat4 u_world;
+  
+  varying vec3 v_normal;
+  
+  void main() {
+    gl_Position = u_projection * u_view * u_world * a_POSITION;
+    v_normal = mat3(u_world) * a_NORMAL;
+  }
+</script>
 <script id="fs" type="notjs">
 precision mediump float;
 
@@ -71,21 +86,6 @@ void main () {
   // for debugging .. see article
   //gl_FragColor = vec4(1, 0, 0, 1);
   //gl_FragColor = vec4(v_normal * .5 + .5, 1);
-}
-</script>
-<script id="meshVS" type="notjs">
-attribute vec4 a_POSITION;
-attribute vec3 a_NORMAL;
-
-uniform mat4 u_projection;
-uniform mat4 u_view;
-uniform mat4 u_world;
-
-varying vec3 v_normal;
-
-void main() {
-  gl_Position = u_projection * u_view * u_world * a_POSITION;
-  v_normal = mat3(u_world) * a_NORMAL;
 }
 </script>
 <!--
@@ -473,6 +473,7 @@ async function main() {
   }
 
   const origMatrices = new Map();
+  // const origMatrices = [];
   function animSkin(skin, a) {
     for (let i = 0; i < skin.joints.length; ++i) {
       const joint = skin.joints[i];
@@ -525,7 +526,7 @@ async function main() {
     gl.enable(gl.CULL_FACE);
     gl.clearColor(.1, .1, .1, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    // animSkin(gltf.skins[0], Math.sin(time) * .5);
+    animSkin(gltf.skins[0], Math.sin(time) * .5);
 
     for (const scene of gltf.scenes) {
       // updatte all world matices in the scene.
@@ -536,7 +537,7 @@ async function main() {
     //
     requestAnimationFrame(render);
   }
-  requestAnimationFrame(render);
+  render();
 }
 
 main();
