@@ -82,7 +82,7 @@ void main () {
   vec3 normal = normalize(v_normal);
   float light = dot(u_lightDirection, normal) * .5 + .5;
   gl_FragColor = vec4(u_diffuse.rgb * light, u_diffuse.a);
-
+  //gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
   // for debugging .. see article
   //gl_FragColor = vec4(1, 0, 0, 1);
   //gl_FragColor = vec4(v_normal * .5 + .5, 1);
@@ -97,6 +97,7 @@ for webgl-utils, m3, m4, and webgl-lessons-ui.
 -->
 <script src="resources/webgl-utils.js"></script>
 <script src="resources/m4.js"></script>
+<script src="resources/gl-matrix.js"></script>
 <script>
 "use strict";
 
@@ -144,15 +145,20 @@ async function main() {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     }
     update(node) {
-      const globalWorldInverse = m4.inverse(node.worldMatrix);
+      // const globalWorldInverse = m4.inverse(node.worldMatrix);
+      const globalWorldInverse = [];
+      mat4.invert(globalWorldInverse, node.worldMatrix);
+      // console.log(globalWorldInverse);
       // go through each joint and get its current worldMatrix
       // apply the inverse bind matrices and store the
       // entire result in the texture
       for (let j = 0; j < this.joints.length; ++j) {
         const joint = this.joints[j];
         const dst = this.jointMatrices[j];
-        m4.multiply(globalWorldInverse, joint.worldMatrix, dst);
-        m4.multiply(dst, this.inverseBindMatrices[j], dst);
+        // m4.multiply(globalWorldInverse, joint.worldMatrix, dst);
+        // m4.multiply(dst, this.inverseBindMatrices[j], dst);
+        mat4.multiply(dst, globalWorldInverse, joint.worldMatrix);
+        mat4.multiply(dst, dst, this.inverseBindMatrices[j]);
       }
       gl.bindTexture(gl.TEXTURE_2D, this.jointTexture);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 4, this.joints.length, 0,
@@ -168,7 +174,8 @@ async function main() {
     }
     getMatrix(dst) {
       dst = dst || new Float32Array(16);
-      m4.compose(this.position, this.rotation, this.scale, dst);
+      // m4.compose(this.position, this.rotation, this.scale, dst);
+      mat4.fromRotationTranslationScale(dst, this.rotation, this.position, this.scale);
       return dst;
     }
   }
@@ -179,8 +186,10 @@ async function main() {
       this.source = source;
       this.parent = null;
       this.children = [];
-      this.localMatrix = m4.identity();
-      this.worldMatrix = m4.identity();
+      // this.localMatrix = m4.identity();
+      // this.worldMatrix = m4.identity();
+      this.localMatrix = mat4.identity([]);
+      this.worldMatrix = mat4.identity([]);
       this.drawables = [];
     }
     setParent(parent) {
@@ -202,10 +211,11 @@ async function main() {
 
       if (parentWorldMatrix) {
         // a matrix was passed in so do the math
-        m4.multiply(parentWorldMatrix, this.localMatrix, this.worldMatrix);
+        // m4.multiply(parentWorldMatrix, this.localMatrix, this.worldMatrix);
+        mat4.multiply(this.worldMatrix, parentWorldMatrix, this.localMatrix)
       } else {
         // no matrix was passed in so just copy local to world
-        m4.copy(this.localMatrix, this.worldMatrix);
+        mat4.copy(this.localMatrix, this.worldMatrix);
       }
 
       // now process all the children
@@ -465,6 +475,7 @@ async function main() {
   }
 
   const gltf = await loadGLTF('resources/models/killer_whale/whale.CYCLES.gltf');
+  // const gltf = await loadGLTF('resources/models/simpleSkin.gltf');
   
   // const gltf = await loadGLTF('resources/models/CesiumMan/CesiumMan.gltf');
 
@@ -485,10 +496,14 @@ async function main() {
       // get the original matrix
       const origMatrix = origMatrices.get(joint);
       // rotate it
-      let m = m4.xRotate(origMatrix, a);
+      //let m = m4.xRotate(origMatrix, a);
+      let m = [];
+      // mat4.rotateX(m, origMatrix, a);
+      mat4.rotateX(m, origMatrix, a);
       // decompose it back into position, rotation, scale
       // into the joint
       m4.decompose(m, joint.source.position, joint.source.rotation, joint.source.scale);
+      // joint.localMatrix = m;
     }
   }
 
@@ -501,6 +516,8 @@ async function main() {
 
   const cameraPosition = [10, 0, -5];
   const target = [0, 0, -10];
+  // const cameraPosition = [0, 0, 5];
+  // const target = [0, 0, 0];
   // for debugging .. see article
   // const cameraPosition = [5, 0, 5];
   // const target = [0, 0, 0];
@@ -519,7 +536,7 @@ async function main() {
         drawable.render(node, projection, view, sharedUniforms);
     }
   }
-
+  let fl = false;
   function render(time) {
     time *= 0.001;// convert to seconds
     gl.enable(gl.DEPTH_TEST);
