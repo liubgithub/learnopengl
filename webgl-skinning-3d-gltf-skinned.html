@@ -81,8 +81,8 @@ uniform vec3 u_lightDirection;
 void main () {
   vec3 normal = normalize(v_normal);
   float light = dot(u_lightDirection, normal) * .5 + .5;
-  gl_FragColor = vec4(u_diffuse.rgb * light, u_diffuse.a);
-  //gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+  //gl_FragColor = vec4(u_diffuse.rgb * light, u_diffuse.a);
+  gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
   // for debugging .. see article
   //gl_FragColor = vec4(1, 0, 0, 1);
   //gl_FragColor = vec4(v_normal * .5 + .5, 1);
@@ -117,7 +117,7 @@ async function main() {
   // compiles and links the shaders, looks up attribute and uniform locations
   const skinProgramInfo = webglUtils.createProgramInfo(gl, ["skinVS", "fs"]);
   const meshProgramInfo = webglUtils.createProgramInfo(gl, ["meshVS", "fs"]);
-
+  let flg = false;
   class Skin {
     constructor(joints, inverseBindMatrixData) {
       this.joints = joints;
@@ -163,6 +163,7 @@ async function main() {
       gl.bindTexture(gl.TEXTURE_2D, this.jointTexture);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 4, this.joints.length, 0,
                     gl.RGBA, gl.FLOAT, this.jointData);
+      flg = true;
     }
   }
 
@@ -212,10 +213,10 @@ async function main() {
       if (parentWorldMatrix) {
         // a matrix was passed in so do the math
         // m4.multiply(parentWorldMatrix, this.localMatrix, this.worldMatrix);
-        mat4.multiply(this.worldMatrix, parentWorldMatrix, this.localMatrix)
+        mat4.multiply(this.worldMatrix, parentWorldMatrix, this.localMatrix);
       } else {
         // no matrix was passed in so just copy local to world
-        mat4.copy(this.localMatrix, this.worldMatrix);
+        mat4.copy(this.worldMatrix, this.localMatrix);
       }
 
       // now process all the children
@@ -408,18 +409,17 @@ async function main() {
 
     const skinNodes = [];
     const origNodes = gltf.nodes;
-    gltf.nodes = gltf.nodes.map((n) => {
+    gltf.nodes = gltf.nodes.map((n, index) => {
       const {name, skin, mesh, translation, rotation, scale} = n;
       const trs = new TRS(translation, rotation, scale);
       const node = new Node(trs, name);
       const realMesh = gltf.meshes[mesh];
       if (skin !== undefined) {
         skinNodes.push({node, mesh: realMesh, skinNdx: skin});
-      } else if (realMesh) {
-        node.drawables.push(new MeshRenderer(realMesh));
       }
       return node;
     });
+    console.log(gltf.nodes);
 
     // setup skins
     gltf.skins = gltf.skins.map((skin) => {
@@ -427,7 +427,6 @@ async function main() {
       const {array} = getAccessorTypedArrayAndStride(gl, gltf, skin.inverseBindMatrices);
       return new Skin(joints, array);
     });
-
 
     // Add SkinRenderers to nodes with skins
     for (const {node, mesh, skinNdx} of skinNodes) {
@@ -474,8 +473,8 @@ async function main() {
     return loadFile(url, 'json');
   }
 
-  const gltf = await loadGLTF('resources/models/killer_whale/whale.CYCLES.gltf');
-  // const gltf = await loadGLTF('resources/models/simpleSkin.gltf');
+  // const gltf = await loadGLTF('resources/models/killer_whale/whale.CYCLES.gltf');
+  const gltf = await loadGLTF('resources/models/simpleSkin.gltf');
   
   // const gltf = await loadGLTF('resources/models/CesiumMan/CesiumMan.gltf');
 
@@ -503,7 +502,6 @@ async function main() {
       // decompose it back into position, rotation, scale
       // into the joint
       m4.decompose(m, joint.source.position, joint.source.rotation, joint.source.scale);
-      // joint.localMatrix = m;
     }
   }
 
@@ -514,10 +512,10 @@ async function main() {
   const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
   const projection = m4.perspective(fieldOfViewRadians, aspect, 1, 2000);
 
-  const cameraPosition = [10, 0, -5];
-  const target = [0, 0, -10];
-  // const cameraPosition = [0, 0, 5];
-  // const target = [0, 0, 0];
+  // const cameraPosition = [10, 0, -5];
+  // const target = [0, 0, -10];
+  const cameraPosition = [0, 0, 5];
+  const target = [0, 0, 0];
   // for debugging .. see article
   // const cameraPosition = [5, 0, 5];
   // const target = [0, 0, 0];
@@ -538,12 +536,12 @@ async function main() {
   }
   let fl = false;
   function render(time) {
-    time *= 0.001;// convert to seconds
+    // time *= 0.001;// convert to seconds
     gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.CULL_FACE);
     gl.clearColor(.1, .1, .1, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    animSkin(gltf.skins[0], Math.sin(time) * .5);
+    animSkin(gltf.skins[0], Math.sin(10) * .5);
 
     for (const scene of gltf.scenes) {
       // updatte all world matices in the scene.
