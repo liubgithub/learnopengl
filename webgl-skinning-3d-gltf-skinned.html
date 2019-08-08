@@ -81,8 +81,7 @@ uniform vec3 u_lightDirection;
 void main () {
   vec3 normal = normalize(v_normal);
   float light = dot(u_lightDirection, normal) * .5 + .5;
-  //gl_FragColor = vec4(u_diffuse.rgb * light, u_diffuse.a);
-  gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+  gl_FragColor = vec4(u_diffuse.rgb * light, u_diffuse.a);
   // for debugging .. see article
   //gl_FragColor = vec4(1, 0, 0, 1);
   //gl_FragColor = vec4(v_normal * .5 + .5, 1);
@@ -473,8 +472,8 @@ async function main() {
     return loadFile(url, 'json');
   }
 
-  // const gltf = await loadGLTF('resources/models/killer_whale/whale.CYCLES.gltf');
-  const gltf = await loadGLTF('resources/models/simpleSkin.gltf');
+  const gltf = await loadGLTF('resources/models/killer_whale/whale.CYCLES.gltf');
+  // const gltf = await loadGLTF('resources/models/simpleSkin.gltf');
   
   // const gltf = await loadGLTF('resources/models/CesiumMan/CesiumMan.gltf');
 
@@ -497,8 +496,8 @@ async function main() {
       // rotate it
       //let m = m4.xRotate(origMatrix, a);
       let m = [];
-      // mat4.rotateX(m, origMatrix, a);
       mat4.rotateX(m, origMatrix, a);
+      mat4.rotateY(m, m, a);
       // decompose it back into position, rotation, scale
       // into the joint
       m4.decompose(m, joint.source.position, joint.source.rotation, joint.source.scale);
@@ -512,10 +511,10 @@ async function main() {
   const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
   const projection = m4.perspective(fieldOfViewRadians, aspect, 1, 2000);
 
-  // const cameraPosition = [10, 0, -5];
-  // const target = [0, 0, -10];
-  const cameraPosition = [0, 0, 5];
-  const target = [0, 0, 0];
+  const cameraPosition = [10, 0, -5];
+  const target = [0, 0, -10];
+  // const cameraPosition = [0, 0, 5];
+  // const target = [0, 0, 0];
   // for debugging .. see article
   // const cameraPosition = [5, 0, 5];
   // const target = [0, 0, 0];
@@ -536,16 +535,18 @@ async function main() {
   }
   let fl = false;
   function render(time) {
-    // time *= 0.001;// convert to seconds
+    time *= 0.001;// convert to seconds
     gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.CULL_FACE);
     gl.clearColor(.1, .1, .1, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    animSkin(gltf.skins[0], Math.sin(10) * .5);
 
     for (const scene of gltf.scenes) {
       // updatte all world matices in the scene.
-      scene.root.updateWorldMatrix();
+      scene.root.children.forEach(node => {
+        node.updateWorldMatrix();
+      });
+      animSkin(gltf.skins[0], Math.sin(time) * .5);
       // walk the scene and render all renderables
       scene.root.traverse(renderDrawables);
     }
