@@ -116,7 +116,6 @@ async function main() {
   // compiles and links the shaders, looks up attribute and uniform locations
   const skinProgramInfo = webglUtils.createProgramInfo(gl, ["skinVS", "fs"]);
   const meshProgramInfo = webglUtils.createProgramInfo(gl, ["meshVS", "fs"]);
-  let flg = false;
   class Skin {
     constructor(joints, inverseBindMatrixData) {
       this.joints = joints;
