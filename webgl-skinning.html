@@ -69,7 +69,7 @@ function main() {
   if (!gl) {
     return;
   }
-
+  //更新数据
   // compiles and links the shaders, looks up attribute and uniform locations
   var programInfo = webglUtils.createProgramInfo(gl, ["vs", "fs"]);
 
@@ -189,12 +189,12 @@ function main() {
     gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
     const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
     m4.orthographic(-aspect * 10, aspect * 10, -10, 10, -1, 1, uniforms.projection);
-
+  
     var t = time * 0.001;
     var angle = Math.sin(t) * 0.8;
     computeBoneMatrices(bones, angle);
 
-    // multiply each by its bindPoseInverse
+    // multiply each by it bindPoseInverse
     bones.forEach(function(bone, ndx) {
       m4.multiply(bone, bindPoseInv[ndx], boneMatrices[ndx]);
     });
@@ -209,7 +209,7 @@ function main() {
     // calls gl.drawArrays or gl.drawIndices
     webglUtils.drawBufferInfo(gl, bufferInfo, gl.LINES);
 
-    drawAxis(uniforms.projection, uniforms.view, bones);
+    //drawAxis(uniforms.projection, uniforms.view, bones);
 
     requestAnimationFrame(render);
   }

@@ -7,26 +7,27 @@
     <script src="../lib/webgl-debug.js"></script>
     <script src="../lib/cuon-utils.js"></script>
     <!-- <script src="../lib/cuon-matrix.js"></script> -->
-    <script src="resources/m4.js"></script>
+    <script src="../resources/m4.js"></script>
     <script type="text/javascript">
         // LightedCube.js (c) 2012 matsuda
         // Vertex shader program
         var vs =
           `
-          attribute vec4 a_position;
-                attribute vec4 a_weight;
+                attribute vec4 a_position;
                 attribute vec4 a_boneNdx;
+                attribute vec4 a_weight;
+                
 
                 uniform mat4 projection;
-                uniform mat4 view;
+                uniform mat4 model;
                 uniform mat4 bones[4];
-                uniform mat4 u_MvpMatrix;
                 void main() {
 
-                gl_Position = u_MvpMatrix * (bones[int(a_boneNdx[0])] * a_position * a_weight[0] +
-                 bones[int(a_boneNdx[1])] * a_position * a_weight[1] +
-                 bones[int(a_boneNdx[2])] * a_position * a_weight[2] +
-                 bones[int(a_boneNdx[3])] * a_position * a_weight[3]);
+                gl_Position = projection * model * (bones[int(a_boneNdx[0])]  * a_weight[0] +
+                 bones[int(a_boneNdx[1])]  * a_weight[1] +
+                 bones[int(a_boneNdx[2])]  * a_weight[2] +
+                 bones[int(a_boneNdx[3])]  * a_weight[3]) * a_position;
+                // gl_Position = projection * model * a_position;
 
         }
         `;
@@ -131,9 +132,12 @@
             vsfsProgram.a_boneNdx = gl.getAttribLocation(vsfsProgram, 'a_boneNdx');
             vsfsProgram.a_position = gl.getAttribLocation(vsfsProgram, 'a_position');
             vsfsProgram.a_weight = gl.getAttribLocation(vsfsProgram, 'a_weight');
-            vsfsProgram.u_bones = gl.getUniformLocation(vsfsProgram, 'bones');
+            vsfsProgram.u_bones0 = gl.getUniformLocation(vsfsProgram, 'bones[0]');
+            vsfsProgram.u_bones1 = gl.getUniformLocation(vsfsProgram, 'bones[1]');
+            vsfsProgram.u_bones2 = gl.getUniformLocation(vsfsProgram, 'bones[2]');
+            vsfsProgram.u_bones3 = gl.getUniformLocation(vsfsProgram, 'bones[3]');
             vsfsProgram.u_color = gl.getUniformLocation(vsfsProgram, 'color');
-            vsfsProgram.u_view = gl.getUniformLocation(vsfsProgram, 'view');
+            vsfsProgram.u_model = gl.getUniformLocation(vsfsProgram, 'model');
             vsfsProgram.u_projection = gl.getUniformLocation(vsfsProgram, 'projection');
             vsfsProgram.u_MvpMatrix = gl.getUniformLocation(vsfsProgram, 'u_MvpMatrix');
             // Initialize shaders
@@ -141,22 +145,21 @@
                 console.log('Failed to intialize shaders.');
                 return;
             }
-
             var numBones = 4;
             var boneArray = new Float32Array(numBones * 16);
 
-            var boneMatrices = [];
+            //var boneMatrices = [];
             var bones = [];
-            var bindPose = [];
+            //var bindPose = [];
             for(var i = 0; i < numBones; i++) {
-                boneMatrices.push(new Float32Array(boneArray.buffer, i * 4 * 16, 16));
-                bindPose.push(m4.identity());
+                //boneMatrices.push(new Float32Array(boneArray.buffer, i * 4 * 16, 16));
+                //bindPose.push(m4.identity());
                 bones.push(m4.identity());
             }
-            computeBoneMatrices(bindPose, 0);
-            var bindPoseInv = bindPose.map(function(m){
-                return m4.invert(m);
-            })
+            //computeBoneMatrices(bindPose, 0);
+            // var bindPoseInv = bindPose.map(function(m){
+            //     return m4.inverse(m);
+            // })
             // Set the vertex information
             var hand = initVertexBuffers(gl);
 
@@ -166,17 +169,25 @@
             //gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
             gl.clearColor(0.0, 0.0, 0.0, 1.0);
             // Calculate the view projection matrix
-            var cameraPos = [0.0, 5.0, 20.0];
-            var target = [0.0, 0.0, 0.0];
+            var cameraPos = [6.0, 0.0,12.0];
+            var target = [0, 0.0, 0.0];
             var up = [0, 1, 0];
-            var view = m4.translation(1.0, 0, 0)
+            var model = m4.translation(-6, 0, 0);
             // var viewProjMatrix = new Matrix4();
             // viewProjMatrix.setPerspective(45.0, canvas.width / canvas.height, 1.0, 100.0);
             // viewProjMatrix.lookAt(cameraPos[0], cameraPos[1], cameraPos[2], 0, 0, 0, 0, 1, 0);
-            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-            var perspective = m4.identity();
-            m4.perspective(45.0, canvas.width/canvas.height, 1.0, 100.0, perspective);
-            m4.lookAt(cameraPos, target, up, perspective);
+            // gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+            // var projection = m4.orthographic(-20, 20, -10, 10, -1, 1);
+            // const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+            // m4.orthographic(-aspect * 10, aspect * 10, -10, 10, -1, 1, projection);
+            const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+            // Compute the camera's matrix using look at.
+            const camera = m4.lookAt(cameraPos, target, up);
+            const projection = m4.perspective(Math.PI / 4, aspect, 1, 100);
+            // Make a view matrix from the camera matrix.
+            const view = m4.inverse(camera);
+            // m4.inverse(view);
+            var pvMatrix = m4.multiply(projection, view, []);
             // Start drawing
             var currentAngle = 0.0; // Current rotation angle (degrees)
             gl.useProgram(vsfsProgram);
@@ -187,14 +198,15 @@
                 var t = time * 0.001;
                 var angle = Math.sin(t) * 0.8;
                 computeBoneMatrices(bones, angle);
-                bones.forEach(function(bone, ndx){
-                    m4.multiply(bone, bindPoseInv[ndx], boneMatrices[ndx]);
-                });
+                // bones.forEach(function(bone, ndx){
+                //     m4.multiply(bone, bindPoseInv[ndx], boneMatrices[ndx]);
+                // });
+
                 // drawHand(gl, vsfsProgram, hand, 2.0, currentAngle, viewProjMatrix);
-                drawHand(gl, vsfsProgram, hand, 2.0, currentAngle, perspective, view);
+                drawHand(gl, vsfsProgram, hand, 2.0, currentAngle, pvMatrix, model, bones);
                 requestAnimationFrame(tick, canvas);
             };
-            tick();
+            requestAnimationFrame(tick);
         }
         
         function computeBoneMatrices(bones, angle) {
@@ -203,20 +215,25 @@
             m4.translate(bones[0], 4, 0, 0, m);
             m4.zRotate(m, angle, bones[1]);
             m4.translate(bones[1], 4, 0, 0, m);
-            m4.zRotate(m, angle, bones[2]);
+            m4.zRotate(m, angle, bones[2]);                                                                                                                                                               
             // bones[3] is not used
+            // m4.zRotate(m, angle, bones[3]);
         }
 
         function initVertexBuffers(gl) {
             var vertices = new Float32Array(arrays.position.data);
 
             var indices = new Uint8Array(arrays.indices.data);
-
+            
+            var boneNdx = new Float32Array(arrays.boneNdx.data);
+            var weight = new Float32Array(arrays.weight.data);
             var o = new Object(); // Utilize Object to to return multiple buffer objects together
 
             // Write vertex information to buffer object
-            o.vertexBuffer = initArrayBufferForLaterUse(gl, vertices, 2, gl.FLOAT);
+            o.vertexBuffer = initArrayBufferForLaterUse(gl, vertices, arrays.position.numComponents, gl.FLOAT);
             o.indexBuffer = initElementArrayBufferForLaterUse(gl, indices, gl.UNSIGNED_BYTE);
+            o.boneNdxBuffer = initArrayBufferForLaterUse(gl, boneNdx, arrays.boneNdx.numComponents, gl.FLOAT);
+            o.weightBuffer = initArrayBufferForLaterUse(gl, weight, arrays.weight.numComponents, gl.FLOAT);
             if (!o.vertexBuffer  || !o.indexBuffer) return null;
 
             o.numIndices = indices.length;
@@ -224,21 +241,22 @@
             // Unbind the buffer object
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, null);
-
             return o;
         }
 
-        function drawHand(gl, program, o, x, angle, perspective, view) {
+        function drawHand(gl, program, o, x, angle, perspective, model, bones) {
             // Assign the buffer objects and enable the assignment
             initAttributeVariable(gl, program.a_position, o.vertexBuffer); // Vertex coordinates
+            initAttributeVariable(gl, program.a_boneNdx, o.boneNdxBuffer); 
+            initAttributeVariable(gl, program.a_weight, o.weightBuffer);
             //initAttributeVariable(gl, program.a_Normal, o.normalBuffer);   // Normal
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, o.indexBuffer);  // Bind indices
 
-            drawHandObject(gl, program, o, x, angle, perspective, view);   // Draw
+            drawHandObject(gl, program, o, x, angle, perspective, model, bones);   // Draw
         }
         
-        function drawHandObject(gl, program, o, x, angle, perspective, view) {
-            // // Coordinate transformation matrix
+        function drawHandObject(gl, program, o, x, angle, projection, model, bones) {
+            // // Coordinate transformation matrix                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
             // var g_modelMatrix = new Matrix4();
             // var g_mvpMatrix = new Matrix4();
             // var g_normalMatrix = new Matrix4();
@@ -254,9 +272,14 @@
             // g_mvpMatrix.multiply(g_modelMatrix);
             // gl.uniformMatrix4fv(program.u_MvpMatrix, false, g_mvpMatrix.elements);
             // gl.uniform4f(program.u_color, 1.0, 0.0, 0.0, 1.0);
-
+            
             gl.uniform4f(program.u_color, 1.0, 0.0, 0.0, 1.0);
-            gl.uniform4f(program.u_color, )
+            gl.uniformMatrix4fv(program.u_bones0, false, bones[0]);
+            gl.uniformMatrix4fv(program.u_bones1, false, bones[1]);
+            gl.uniformMatrix4fv(program.u_bones2, false, bones[2]);
+            gl.uniformMatrix4fv(program.u_bones3, false, bones[3]);
+            gl.uniformMatrix4fv(program.u_projection, false, projection);
+            gl.uniformMatrix4fv(program.u_model, false, model);
             gl.drawElements(gl.LINES, o.numIndices, o.indexBuffer.type, 0);   // Draw
         }
 
@@ -292,9 +315,8 @@
             // Write date into the buffer object
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffer);
             gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, data, gl.STATIC_DRAW);
-
             buffer.type = type;
-
+            buffer.type = type;
             return buffer;
         }
 
@@ -312,7 +334,7 @@
     </script>
 </head>
 <body onload="main()">
-    <canvas id="webgl" width="512" height="512">
+    <canvas id="webgl" width="1024" height="1024">
         Please use a browser that supports "canvas"
     </canvas>
 </body>
