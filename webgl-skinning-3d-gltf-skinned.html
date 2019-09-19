@@ -161,7 +161,6 @@ async function main() {
       gl.bindTexture(gl.TEXTURE_2D, this.jointTexture);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 4, this.joints.length, 0,
                     gl.RGBA, gl.FLOAT, this.jointData);
-      flg = true;
     }
   }
 
@@ -401,7 +400,8 @@ async function main() {
         primitive.bufferInfo = bufferInfo;
 
         // save the material info for this primitive
-        primitive.material = gltf.materials && gltf.materials[primitive.material] || defaultMaterial;
+        //primitive.material = gltf.materials && gltf.materials[primitive.material] || defaultMaterial;
+        primitive.material = defaultMaterial;
       });
     });
 
@@ -471,10 +471,10 @@ async function main() {
     return loadFile(url, 'json');
   }
 
-  const gltf = await loadGLTF('resources/models/killer_whale/whale.CYCLES.gltf');
+  // const gltf = await loadGLTF('resources/models/killer_whale/whale.CYCLES.gltf');
   // const gltf = await loadGLTF('resources/models/simpleSkin.gltf');
   
-  // const gltf = await loadGLTF('resources/models/CesiumMan/CesiumMan.gltf');
+  const gltf = await loadGLTF('resources/models/CesiumMan/CesiumMan.gltf');
 
   function degToRad(deg) {
     return deg * Math.PI / 180;
@@ -510,10 +510,10 @@ async function main() {
   const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
   const projection = m4.perspective(fieldOfViewRadians, aspect, 1, 2000);
 
-  const cameraPosition = [10, 0, -5];
-  const target = [0, 0, -10];
-  // const cameraPosition = [0, 0, 5];
-  // const target = [0, 0, 0];
+  // const cameraPosition = [10, 0, -5];
+  // const target = [0, 0, -10];
+  const cameraPosition = [0, 2, 2];
+  const target = [0, 0, 0];
   // for debugging .. see article
   // const cameraPosition = [5, 0, 5];
   // const target = [0, 0, 0];
