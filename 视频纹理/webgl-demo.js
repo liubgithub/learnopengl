@@ -113,10 +113,9 @@ function main() {
   }
   requestAnimationFrame(render);
 }
-
+//this.
 function setupVideo(url) {
   const video = document.createElement('video');
-
   var playing = false;
   var timeupdate = false;
 
@@ -131,7 +130,6 @@ function setupVideo(url) {
      playing = true;
      checkReady();
   }, true);
-
   video.addEventListener('timeupdate', function() {
      timeupdate = true;
      checkReady();
